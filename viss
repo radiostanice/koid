@@ -276,7 +276,7 @@ appsConfig() {
         "cups" "CUPS printing support" off
     )
 
-    local required_defaults=("dolphin" "konsole" "kinfocenter" "octoxbps" "ark" "kate")
+    local required_defaults=("dolphin" "kinfocenter" "octoxbps" "ark" "kate")
     local selected missing_apps=() app
 
     selected=$(drawDialogBack --no-cancel --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "${apps_list[@]}")
