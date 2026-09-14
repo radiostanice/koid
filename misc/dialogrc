@@ -2,7 +2,7 @@ use_colors = ON
 use_shadow = ON
 
 screen_color = (WHITE,BLACK,ON)
-shadow_color = (YELLOW,BLACK,OFF)
+shadow_color = (BLACK,BLACK,OFF)
 dialog_color = (WHITE,BLACK,ON)
 
 border_color = (GREEN,BLACK,OFF)
@@ -24,8 +24,8 @@ searchbox_title_color = (GREEN,BLACK,ON)
 searchbox_border_color = (GREEN,BLACK,ON)
 position_indicator_color = (GREEN,BLACK,ON)
 
-menubox_color = (WHITE,BLACK,OFF)
-menubox_border_color = (WHITE,BLACK,OFF)
+menubox_color = (GREEN,BLACK,OFF)
+menubox_border_color = (GREEN,BLACK,OFF)
 menubox_border2_color = (WHITE,BLACK,ON)
 item_color = (WHITE,BLACK,ON)
 tag_color = (WHITE,BLACK,ON)
