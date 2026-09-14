@@ -65,22 +65,12 @@ drawDialogBack() {
     dialog --stdout --no-mouse --backtitle "Void Linux Custom Installer" --extra-button --extra-label "Back" "$@"
 }
 
-syncRepo() {
-    local attempt=1
-    while :; do
-        timeout -k 10 300 xbps-install -Sy -R "$repository" -r /mnt && return 0
-        [ "$attempt" -ge 5 ] && die "Could not sync repository index after 5 attempts."
-        echo -e "${YELLOW}Repo sync failed (attempt $attempt/5), retrying in 5s...${NC}"
-        sleep 5
-        attempt=$((attempt + 1))
-    done
-}
-
 install() {
     local attempt=1 attempts=5 delay=5 rc
     while :; do
-        # timeout: TERM after 10 min of a frozen transfer, KILL 10s later
-        timeout -k 10 600 xbps-install -y -R "$repository" -r /mnt "$@"
+        # -S is required: it fetches the repo index into the target rootdir.
+        # Without it a fresh /mnt has an empty repository pool.
+        timeout -k 10 600 xbps-install -Sy -R "$repository" -r /mnt "$@"
         rc=$?
         [ $rc -eq 0 ] && return 0
 
@@ -93,6 +83,7 @@ install() {
         delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
     done
 }
+
 system() {
     chroot /mnt /bin/bash -c "$@" || die "Chroot command failed: $*"
 }
