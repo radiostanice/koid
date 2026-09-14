@@ -150,7 +150,7 @@ encryptionConfig() {
 
 # --- 7. PRIVILEGE ESCALATION CHOICE ---
 suConfig() {
-    su=$(drawDialogBack --no-cancel --title "Privilege Escalation" --menu "Choose your privilege escalation tool:" 0 0 0 \
+    su=$(drawDialogBack --no-cancel --title "Privilege Escalation" --menu "Choose your privilege escalation tool:" 0 0 2 \
     "sudo" "- Standard, widely used privilege escalation" \
     "doas" "- Lightweight, secure alternative (OpenBSD style)")
     ret=$?
