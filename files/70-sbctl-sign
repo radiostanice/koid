@@ -1,0 +1,10 @@
+#!/bin/sh
+# Hook to sign UKI binaries automatically
+command -v sbctl >/dev/null || exit 0
+
+# Sign UKI binaries on the ESP; fail loudly if signing breaks
+for bin in /boot/efi/EFI/Linux/*.efi /boot/efi/EFI/boot/*.efi; do
+    if [ -f "$bin" ]; then
+        sbctl sign -s "$bin" || exit 1
+    fi
+done
