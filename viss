@@ -29,7 +29,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialogBack --no-cancel --title "Available Disks" --menu "Choose the disk to install Void Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
+    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Void Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then
         exit 0
@@ -45,7 +45,7 @@ diskConfig() {
 userConfig() {
     # Username
     while :; do
-        username=$(drawDialogBack --title "Create User" --inputbox \
+        username=$(drawDialogBack --nocancel --title "Create User" --inputbox \
             "Enter your username:\n(lowercase letters, digits, '-' and '_';\nmust start with a letter or '_')" 0 0 "${username:-user}")
         ret=$?
         if [ $ret -eq 1 ]; then exit 0
@@ -60,7 +60,7 @@ userConfig() {
 
     # Hostname
     while :; do
-        hostname=$(drawDialogBack --title "System Hostname" --inputbox \
+        hostname=$(drawDialogBack --nocancel --title "System Hostname" --inputbox \
             "Enter your system hostname:\n(letters, digits, '-' and '_'; no spaces or dots)" 0 0 "${hostname:-localhost}")
         ret=$?
         if [ $ret -eq 1 ]; then exit 0
@@ -122,15 +122,15 @@ localeConfig() {
 
 # --- 5. REPOSITORY MIRROR ---
 repositoryConfig() {
-    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the Fastly CDN repo will be used." 0 0
+    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 0
     ret=$?
     if [ $ret -eq 3 ]; then localeConfig; return
     elif [ $ret -eq 0 ]; then
         xmirror
         repository=$(grep -h '^repository=' /etc/xbps.d/*-repository-main.conf 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d '[:space:]')
     else
-        [ "$libc" = "glibc" ] && repository="https://repo-fastly.voidlinux.org/current"
-        [ "$libc" = "musl" ] && repository="https://repo-fastly.voidlinux.org/current/musl"
+        [ "$libc" = "glibc" ] && repository="https://repo-default.voidlinux.org/current"
+        [ "$libc" = "musl" ] && repository="https://repo-default.voidlinux.org/current/musl"
     fi
     
     [ "$libc" = "glibc" ] && ARCH="x86_64"
@@ -161,8 +161,8 @@ suConfig() {
 # --- 8. KERNEL SELECTION ---
 kernelConfig() {
     kernel=$(drawDialogBack --no-cancel --title "Kernel Selection" --menu "Select your Linux kernel:" 0 0 0 \
-    "linux" "- Standard latest stable kernel" \
-    "linux-lts" "- Long Term Support kernel (recommended for stability)")
+    "linux-lts" "- Long Term Support kernel (recommended for stability)" \
+    "linux" "- Standard latest stable kernel")
     ret=$?
     if [ $ret -eq 3 ]; then suConfig; return; fi
     kernelParamsConfig
@@ -170,15 +170,18 @@ kernelConfig() {
 
 # --- 8.1 KERNEL SECURITY PRESETS ---
 kernelParamsConfig() {
-    # Define strings for reuse
-    local KERN_PARAMS_DEFAULT="mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
-    local KERN_PARAMS_SECURE="mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
+    # Base boot parameters (Read-Write, Quiet boot, Log level 3)
+    local BASE_PARAMS="rw quiet loglevel=3"
+    
+    # Prepend BASE_PARAMS to your profiles so the user sees the whole command line
+    local KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
+    local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
 
-    # 1. "default" is now the first option in the menu
+    # 1. Menu selection
     preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 0 0 \
     "default" "- Default (Good performance with baseline security)" \
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
-    "custom" "- Custom (Edit the default parameters manually)")
+    "custom" "- Custom (Edit the parameters manually - Base options included)")
     ret=$?
     if [ $ret -eq 3 ]; then kernelConfig; return; fi
 
@@ -190,13 +193,13 @@ kernelParamsConfig() {
         while :; do
             # 2. Pre-populate the input box with the DEFAULT string
             KERN_PARAMS=$(drawDialogBack --title "Custom Parameters" --inputbox \
-                "Enter custom kernel parameters (space-separated):\n(Leave empty to skip)" 0 0 "$KERN_PARAMS_DEFAULT")
+                "Enter custom kernel parameters (space-separated):\n\n*Base boot options (rw, quiet, loglevel) are already included.*" 0 0 "$KERN_PARAMS_DEFAULT")
             ret=$?
             if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
             
-            # If user leaves it blank/empty
+            # If user leaves it blank/empty, fallback to base parameters only
             if [ -z "${KERN_PARAMS// }" ]; then
-                KERN_PARAMS=""
+                KERN_PARAMS="$BASE_PARAMS"
                 break
             fi
             
