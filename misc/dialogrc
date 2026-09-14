@@ -2,7 +2,7 @@ use_colors = ON
 use_shadow = ON
 
 screen_color = (WHITE,BLACK,ON)
-shadow_color = (BLACK,BLACK,OFF)
+shadow_color = (YELLOW,BLACK,OFF)
 dialog_color = (WHITE,BLACK,ON)
 
 border_color = (GREEN,BLACK,OFF)
