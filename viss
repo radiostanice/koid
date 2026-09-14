@@ -382,6 +382,7 @@ EOF
     cp -f "$(pwd)"/misc/libviss /mnt/tmp/libviss || die
     cp -f "$(pwd)"/setup/chroot /mnt/tmp/chroot || die
     cp -f "$(pwd)"/misc/60-ukify /mnt/tmp/60-ukify || die
+    cp -r "$(pwd)"/files /mnt/tmp/files || die
     
     system "/bin/bash /tmp/chroot"
     clear
