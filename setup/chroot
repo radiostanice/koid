@@ -9,6 +9,9 @@ exitFunction () {
     # Drop xbps/ukify log since it's unreadable on a failed boot anyway
     rm -f /var/log/xbps.log
 
+    # Remove installer artifacts from the target system
+    rm -rf /tmp/files /tmp/libviss /tmp/chroot /tmp/60-ukify /tmp/installerOptions
+
     # SAFETY ADDITION: Force the new "Void Linux" entry to the top of the UEFI boot order.
     # This prevents stubborn motherboards from ignoring the new UKI entry.
     # CHANGED: use $newEntry captured at creation time; never re-grep by label
