@@ -70,7 +70,7 @@ install() {
     while :; do
         # -S is required: it fetches the repo index into the target rootdir.
         # Without it a fresh /mnt has an empty repository pool.
-        timeout -k 10 600 xbps-install -Sy -R "$repository" -r /mnt "$@"
+        timeout -k 10 60 xbps-install -Sy -R "$repository" -r /mnt "$@"
         rc=$?
         [ $rc -eq 0 ] && return 0
 
