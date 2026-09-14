@@ -160,7 +160,7 @@ suConfig() {
 
 # --- 8. KERNEL SELECTION ---
 kernelConfig() {
-    kernel=$(drawDialogBack --no-cancel --title "Kernel Selection" --menu "Select your Linux kernel:" 0 0 0 \
+    kernel=$(drawDialogBack --no-cancel --title "Kernel Selection" --menu "Select your Linux kernel:" 0 0 2 \
     "linux-lts" "- Long Term Support kernel (recommended for stability)" \
     "linux" "- Standard latest stable kernel")
     ret=$?
@@ -178,7 +178,7 @@ kernelParamsConfig() {
     local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
 
     # 1. Menu selection
-    preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 0 0 \
+    preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 0 3 \
     "default" "- Default (Good performance with baseline security)" \
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
     "custom" "- Custom (Edit the parameters manually - Base options included)")
@@ -212,7 +212,7 @@ kernelParamsConfig() {
 
 # --- 9. INITRAMFS CHOICE ---
 initrdConfig() {
-    initrd=$(drawDialogBack --no-cancel --title "Initramfs Choice" --menu "Select your initramfs generator:" 0 0 0 \
+    initrd=$(drawDialogBack --no-cancel --title "Initramfs Choice" --menu "Select your initramfs generator:" 0 0 2 \
     "dracut" "- Default, robust Void initramfs generator" \
     "tinyramfs" "- Small, fast POSIX Shell initramfs generator")
     ret=$?
@@ -222,7 +222,7 @@ initrdConfig() {
 
 # --- 10. GPU SELECTION ---
 gpuConfig() {
-    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:\n(Note: Auto-detect can be inaccurate in VMs)" 0 0 0 \
+    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:\n(Note: Auto-detect can be inaccurate in VMs)" 0 0 6 \
     "auto" "- Auto-detect (lspci)" \
     "amd" "- AMD / Radeon" \
     "intel" "- Intel" \
