@@ -52,19 +52,8 @@ if [ "$secureboot" = "Yes" ]; then
     # Create the kernel hook for automatic signing
     # NOTE: Named 70-sbctl-sign so it runs AFTER 60-ukify (lexical order)
     mkdir -p /etc/kernel.d/post-install
-    cat <<'HOOK' > /etc/kernel.d/post-install/70-sbctl-sign
-#!/bin/sh
-# Hook to sign UKI binaries automatically
-command -v sbctl >/dev/null || exit 0
-
-# Sign UKI binaries on the ESP; fail loudly if signing breaks
-for bin in /boot/efi/EFI/Linux/*.efi /boot/efi/EFI/boot/*.efi; do
-    if [ -f "$bin" ]; then
-        sbctl sign -s "$bin" || exit 1
-    fi
-done
-HOOK
-    chmod +x /etc/kernel.d/post-install/70-sbctl-sign
+    cp /tmp/files/70-sbctl-sign /etc/kernel.d/post-install/70-sbctl-sign || die "Failed to install sbctl signing hook."
+    chmod 755 /etc/kernel.d/post-install/70-sbctl-sign
 fi
 
 # --- UKI GENERATION ---
@@ -149,7 +138,7 @@ commandFailure="Post-installation configuration failed (after NVRAM registration
 ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime || die
 
 if [ "$su" = "doas" ]; then
-    echo "permit persist :wheel" > /etc/doas.conf || die
+    cp /tmp/files/doas.conf /etc/doas.conf || die
     chown root:root /etc/doas.conf || die
     chmod 0400 /etc/doas.conf || die
     ln -sf /usr/bin/doas /usr/bin/sudo || die
@@ -168,30 +157,11 @@ else
     echo "$username ALL=(ALL:ALL) ALL" > /etc/sudoers.d/$username
     chmod 440 /etc/sudoers.d/$username
 
-    cat <<EOF > /home/"$username"/.bash_profile
-export CHROMIUM_FLAGS="--ozone-platform-hint=wayland --force-device-scale-factor=1.0"
-export GOOGLE_API_KEY="no"
-export GOOGLE_DEFAULT_CLIENT_ID="0"
-export GOOGLE_DEFAULT_CLIENT_SECRET="0"
-export LANG=${sys_locale}
-export LC_ALL=${sys_locale}
-if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
-    # Escaped so it evaluates the user's actual UID at login, not root's UID (0)
-    export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
-    if [ ! -d "\$XDG_RUNTIME_DIR" ]; then
-        mkdir -p "\$XDG_RUNTIME_DIR"
-        chmod 700 "\$XDG_RUNTIME_DIR"
-    fi
-    export XDG_SESSION_TYPE=wayland
-    export XDG_CURRENT_DESKTOP=KDE
-    export QT_QPA_PLATFORM=wayland
-    exec dbus-run-session startplasma-wayland
-fi
-unset HISTFILE
-EOF
-
-    chown "$username":"$username" /home/"$username"/.bash_profile
-    chmod 644 /home/"$username"/.bash_profile
+    # Render the template: only @LOCALE@ is substituted, so $DISPLAY,
+    # $(tty) and $(id -u) stay literal and evaluate at login time
+    sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bash_profile > /home/"$username"/.bash_profile || die
+    chown "$username":"$username" /home/"$username"/.bash_profile || die
+    chmod 644 /home/"$username"/.bash_profile || die
 
     # TTY1 Autologin 
     if [ "$encryption" = "Yes" ]; then
@@ -205,50 +175,10 @@ commandFailure="Configuring KDE Plasma defaults has failed."
 KDE_CONFIG_DIR="/home/$username/.config"
 mkdir -p "$KDE_CONFIG_DIR" || die
 
-# 1. Disable splash screen
-cat <<EOF > "$KDE_CONFIG_DIR/ksplashrc"
-[KSplash]
-Engine=none
-EOF
-
-# 2. Disable Baloo file indexer
-cat <<EOF > "$KDE_CONFIG_DIR/baloofilerc"
-[Basic Settings]
-Indexing-Enabled=false
-EOF
-
-# 3. Disable recent documents / activity tracking
-cat <<EOF > "$KDE_CONFIG_DIR/kactivitymanagerdrc"
-[Plugins]
-org.kde.ActivityManager.Resources_0009=false
-EOF
-
-# 4. KRunner: disable plugins + spell check
-cat <<EOF > "$KDE_CONFIG_DIR/krunnerrc"
-[Plugins]
-websearchEnabled=false
-softwarecenterEnabled=false
-org.kde.plasma.softwarecenterEnabled=false
-
-[General]
-SpellCheck=false
-EOF
-
-# 5. Start with empty session (don't restore previous session)
-cat <<EOF > "$KDE_CONFIG_DIR/ksmserverrc"
-[General]
-confirmLogout=false
-loginMode=emptySession
-EOF
-
-# 6. Disable spell check globally
-cat <<EOF > "$KDE_CONFIG_DIR/sonnetrc"
-[General]
-autodetectLanguage=false
-defaultLanguage=en
-skipRunTogether=false
-checkerEnabledByDefault=false
-EOF
+for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc sonnetrc; do
+    cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
+    chmod 644 "$KDE_CONFIG_DIR/$rc" || die
+done
 
 # Fix ownership
 chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
