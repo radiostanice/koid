@@ -32,11 +32,7 @@ if [ "$su" = "doas" ]; then
 fi
 
 # Make nano the default editor instead of vi
-cat <<EOF > /mnt/etc/profile.d/nano.sh
-export EDITOR=nano
-export VISUAL=nano
-EOF
-chmod 644 /mnt/etc/profile.d/nano.sh
+command install -Dm644 "$VISS_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || die
 
 # UKI & Initramfs Dependencies
 commandFailure="UKI/Initramfs package installation has failed."
@@ -48,7 +44,6 @@ if [ "$encryption" = "Yes" ]; then
     install cryptsetup || die
 fi
 
-# FIX: Switch alternatives to tinyramfs if selected.
 # linux-base pulls dracut, which owns the 20-initramfs slot by default.
 # We must explicitly switch to tinyramfs so it takes over.
 if [ "$initrd" = "tinyramfs" ]; then
@@ -104,27 +99,12 @@ echo "$hostname" > /mnt/etc/hostname || die
 
 # --- NETWORK MANAGER MAC RANDOMIZATION ---
 commandFailure="Configuring NetworkManager MAC randomization failed."
-mkdir -p /mnt/etc/NetworkManager/conf.d
-
-cat << 'EOF' > /mnt/etc/NetworkManager/conf.d/00-mac-randomize.conf
-[device]
-wifi.scan-rand-mac-address=yes
-
-[connection]
-wifi.cloned-mac-address=stable
-ethernet.cloned-mac-address=stable
-EOF
+command install -Dm644 "$VISS_FILES_DIR/00-mac-randomize.conf" \
+    /mnt/etc/NetworkManager/conf.d/00-mac-randomize.conf || die
 
 # --- NTS SECURE TIME SYNC ---
 commandFailure="Configuring Chrony for NTS has failed."
-cat << 'EOF' > /mnt/etc/chrony.conf
-pool time.cloudflare.com iburst nts
-makestep 1.0 3
-rtcsync
-logdir /var/log/chrony
-log measurements statistics tracking
-EOF
-
+command install -Dm644 "$VISS_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
 enableService chronyd
 
 # --- INSTALL ADDITIONAL APPS ---
@@ -190,12 +170,7 @@ if [ "$is_ssd" -eq 1 ]; then
     install cronie || die
     
     # Create the weekly cron job
-    mkdir -p /mnt/etc/cron.weekly || die
-    cat << 'CRON_EOF' > /mnt/etc/cron.weekly/fstrim
-#!/bin/sh
-/usr/bin/fstrim -av
-CRON_EOF
-    chmod +x /mnt/etc/cron.weekly/fstrim || die
+    command install -Dm755 "$VISS_FILES_DIR/fstrim" /mnt/etc/cron.weekly/fstrim || die
     
     # Enable the cronie runit service using your existing libviss function
     enableService cronie
