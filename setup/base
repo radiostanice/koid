@@ -83,17 +83,16 @@ mkdir -p /mnt/etc/kernel || die
 if [ "$encryption" = "Yes" ]; then
     luks_uuid=$(blkid -o value -s UUID "$root")
     [ -n "$luks_uuid" ] || die "Failed to get LUKS UUID for $root."
-    # Unified cmdline: dracut needs rd.luks.name, tinyramfs ignores it but needs root=
-    echo -n "rd.luks.name=$luks_uuid=void_root root=/dev/mapper/void_root rootfstype=ext4 rw quiet" > /mnt/etc/kernel/cmdline || die
+    echo -n "rd.luks.name=$luks_uuid=void_root root=/dev/mapper/void_root rootfstype=ext4 " > /mnt/etc/kernel/cmdline || die
 else
-    echo -n "root=UUID=$root_uuid rootfstype=ext4 rw quiet" > /mnt/etc/kernel/cmdline || die
+    echo -n "root=UUID=$root_uuid rootfstype=ext4 " > /mnt/etc/kernel/cmdline || die
 fi
 
 if [ -n "$KERN_PARAMS" ]; then
-    # Safely append parameters, treating them strictly as text
-    printf " %s\n" "$KERN_PARAMS" >> /mnt/etc/kernel/cmdline || die
+    printf "%s\n" "$KERN_PARAMS" >> /mnt/etc/kernel/cmdline || die
 else
-    printf "\n" >> /mnt/etc/kernel/cmdline || die
+    # Fallback if they somehow wiped the parameters completely blank
+    printf "rw quiet loglevel=3\n" >> /mnt/etc/kernel/cmdline || die
 fi
 
 # --- LOCALE & HOSTNAME ---
