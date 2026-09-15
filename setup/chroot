@@ -189,7 +189,7 @@ else
     mkdir -p "$KDE_CONFIG_DIR" || die
 
     # Copy static KDE configs (Removed sonnetrc from this list)
-    for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc; do
+    for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc kwinrc; do
         cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
         chmod 644 "$KDE_CONFIG_DIR/$rc" || die
     done
