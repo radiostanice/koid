@@ -112,14 +112,10 @@ enableService chronyd
 
 # --- SECURE DNS (Unbound + DoT + DNSSEC) ---
 commandFailure="Configuring Unbound for Secure DNS has failed."
-mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound /mnt/etc/NetworkManager/conf.d || die
+mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound || die
 
 # Install Unbound configuration
 command install -Dm644 "$VISS_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
-
-# Prevent NetworkManager from overwriting our local resolver
-command install -Dm644 "$VISS_FILES_DIR/99-unbound-dns.conf" \
-    /mnt/etc/NetworkManager/conf.d/99-unbound-dns.conf || die
 
 # Static resolv.conf pointing to our local Unbound instance
 command install -Dm644 "$VISS_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
