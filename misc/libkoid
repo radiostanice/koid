@@ -7,12 +7,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # --- 1. FILES AND DIALOG THEME SETUP ---
-_VISS_MISC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-if [ -f "${_VISS_MISC_DIR}/dialogrc" ]; then
-    export DIALOGRC="${_VISS_MISC_DIR}/dialogrc"
+_KOID_MISC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
+    export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
 fi
-
-VISS_FILES_DIR="$(cd "${_VISS_MISC_DIR}/../files" &>/dev/null && pwd)"
+KOID_FILES_DIR="$(cd "${_KOID_MISC_DIR}/../files" &>/dev/null && pwd)"
 
 # --- Robust Cleanup Function ---
 cleanup_mounts() {
@@ -58,11 +57,11 @@ die() {
 
 drawDialog() {
     dialog --stdout --no-mouse \
-           --backtitle "Void Linux Custom Installer" "$@"
+           --backtitle "Koid Linux Installer" "$@"
 }
 
 drawDialogBack() {
-    dialog --stdout --no-mouse --backtitle "Void Linux Custom Installer" --extra-button --extra-label "Back" "$@"
+    dialog --stdout --no-mouse --backtitle "Koid Linux Installer" --extra-button --extra-label "Back" "$@"
 }
 
 install() {
