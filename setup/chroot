@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. "/tmp/libviss" || { echo "/tmp/libviss not found."; exit 1; }
+. "/tmp/libkoid" || { echo "/tmp/libkoid not found."; exit 1; }
 . "/tmp/installerOptions" || { commandFailure="Sourcing installer options failed."; die; }
 
 exitFunction () {
@@ -20,7 +20,7 @@ exitFunction () {
     rm -f /var/log/xbps.log
 
     # Remove installer artifacts from the target system
-    rm -rf /tmp/files /tmp/libviss /tmp/chroot /tmp/60-ukify /tmp/installerOptions
+    rm -rf /tmp/files /tmp/libkoid /tmp/chroot /tmp/60-ukify /tmp/installerOptions
 
     # SAFETY ADDITION: Force the new "Void Linux" entry to the top of the UEFI boot order.
     # This prevents stubborn motherboards from ignoring the new UKI entry.
