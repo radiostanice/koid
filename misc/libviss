@@ -66,22 +66,27 @@ drawDialogBack() {
 }
 
 install() {
-    local attempt=1 attempts=10 delay=5 rc
-    while :; do
-        # -S is required: it fetches the repo index into the target rootdir.
-        # Without it a fresh /mnt has an empty repository pool.
-        timeout -k 10 60 xbps-install -Sy -R "$repository" -r /mnt "$@"
-        rc=$?
-        [ $rc -eq 0 ] && return 0
+    local max_retries=3
+    local retry_delay=3
+    local count=0
 
-        if [ "$attempt" -ge "$attempts" ]; then
-            die "Failed to install package(s): $* (after $attempts attempts)"
+    while [ $count -lt $max_retries ]; do
+        # Attempt the installation. If it succeeds, exit the function cleanly.
+        if xbps-install -Sy -R "$repository" -r /mnt "$@"; then
+            return 0
         fi
-        echo -e "${YELLOW}Network problem or timeout (attempt $attempt/$attempts). Retrying in ${delay}s...${NC}"
-        sleep "$delay"
-        attempt=$((attempt + 1))
-        delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
+        
+        count=$((count + 1))
+        
+        # If we haven't hit the max retries, wait and try again
+        if [ $count -lt $max_retries ]; then
+            echo -e "${YELLOW} Network stall detected. Retrying in ${retry_delay} seconds... (Attempt $count of $max_retries)${NC}"
+            sleep "$retry_delay"
+        fi
     done
+    
+    # If the loop finishes, all retries failed
+    die "Failed to install package(s) after $max_retries attempts: $*"
 }
 
 system() {
