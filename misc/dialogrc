@@ -6,7 +6,7 @@ shadow_color = (BLACK,BLACK,OFF)
 dialog_color = (WHITE,BLACK,ON)
 
 border_color = (GREEN,BLACK,OFF)
-border2_color = (GREEN,BLACK,OFF)
+border2_color = (GREEN,BLACK,ON)
 title_color = (GREEN,BLACK,ON)
 
 button_active_color = (BLACK,GREEN,OFF)
@@ -32,7 +32,7 @@ tag_color = (WHITE,BLACK,ON)
 tag_key_color = (YELLOW,BLACK,ON)
 item_selected_color = (YELLOW,BLACK,ON)
 tag_selected_color = (YELLOW,BLACK,ON)
-tag_key_selected_color = (RED,BLACK,ON)
+tag_key_selected_color = (YELLOW,BLACK,ON)
 
 check_color = (GREEN,BLACK,ON)
 check_selected_color = (GREEN,BLACK,ON)
