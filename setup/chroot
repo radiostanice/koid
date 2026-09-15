@@ -157,8 +157,16 @@ else
     useradd "$username" -m -d /home/"$username" || die
     usermod -aG audio,video,kvm,wheel "$username" || die
 
-    echo "$username ALL=(ALL:ALL) ALL" > /etc/sudoers.d/$username
-    chmod 440 /etc/sudoers.d/$username
+    # The sudoers drop-in is only valid when sudo is actually installed:
+    # with su=doas, base sets ignorepkg=sudo, so /etc/sudoers.d never
+    # exists and an unconditional redirect fails with "No such file or directory".
+    if [ "$su" = "sudo" ]; then
+        mkdir -p /etc/sudoers.d || die
+        chmod 750 /etc/sudoers.d || die
+        echo "$username ALL=(ALL:ALL) ALL" > /etc/sudoers.d/"$username" || die
+        chmod 440 /etc/sudoers.d/"$username" || die
+        visudo -cf /etc/sudoers.d/"$username" || die
+    fi
 
     # Render the template: only @LOCALE@ is substituted, so $DISPLAY,
     # $(tty) and $(id -u) stay literal and evaluate at login time
