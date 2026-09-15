@@ -66,27 +66,33 @@ drawDialogBack() {
 }
 
 install() {
-    local max_retries=3
-    local retry_delay=3
-    local count=0
+    local attempt=1 attempts=10 delay=5 rc
+    while :; do
+        # -S is required: it fetches the repo index into the target rootdir.
+        # Explicitly set CONNECTION_TIMEOUT (in milliseconds) to ensure xbps 
+        # doesn't internally short-circuit on slow links (300000 = 5 minutes).
+        CONNECTION_TIMEOUT=300000 timeout -k 10 60 xbps-install -Sy -R "$repository" -r /mnt "$@"
+        rc=$?
+        
+        # Success: exit the loop
+        [ $rc -eq 0 ] && return 0
 
-    while [ $count -lt $max_retries ]; do
-        # Attempt the installation. If it succeeds, exit the function cleanly.
-        if xbps-install -Sy -R "$repository" -r /mnt "$@"; then
-            return 0
+        # Failure: check if we've exhausted retries
+        if [ "$attempt" -ge "$attempts" ]; then
+            die "Failed to install package(s): $* (after $attempts attempts)"
         fi
         
-        count=$((count + 1))
+        # Clearer messaging so the user knows the script is intentionally pausing
+        echo -e "${YELLOW}Network issue detected on attempt $attempt/$attempts.${NC}"
+        echo -e "${YELLOW}Pausing for ${delay} seconds to let the connection stabilize before retrying...${NC}"
         
-        # If we haven't hit the max retries, wait and try again
-        if [ $count -lt $max_retries ]; then
-            echo -e "${YELLOW} Network stall detected. Retrying in ${retry_delay} seconds... (Attempt $count of $max_retries)${NC}"
-            sleep "$retry_delay"
-        fi
+        # The sleep IS happening here. It prevents instant retry spam.
+        sleep "$delay"
+        
+        attempt=$((attempt + 1))
+        # Exponential backoff, capped at 60 seconds
+        delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
     done
-    
-    # If the loop finishes, all retries failed
-    die "Failed to install package(s) after $max_retries attempts: $*"
 }
 
 system() {
