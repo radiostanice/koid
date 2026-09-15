@@ -183,27 +183,30 @@ else
         echo "GETTY_ARGS=\"--noclear --autologin $username\"" > /etc/sv/agetty-tty1/conf
     fi
 
-# --- KDE PLASMA HARDENED DEFAULTS ---
-commandFailure="Configuring KDE Plasma defaults has failed."
-KDE_CONFIG_DIR="/home/$username/.config"
-mkdir -p "$KDE_CONFIG_DIR" || die
+    # --- KDE PLASMA HARDENED DEFAULTS ---
+    commandFailure="Configuring KDE Plasma defaults has failed."
+    KDE_CONFIG_DIR="/home/$username/.config"
+    mkdir -p "$KDE_CONFIG_DIR" || die
 
-# Copy static KDE configs (Removed sonnetrc from this list)
-for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc; do
-    cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
-    chmod 644 "$KDE_CONFIG_DIR/$rc" || die
-done
+    # Copy static KDE configs (Removed sonnetrc from this list)
+    for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc; do
+        cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
+        chmod 644 "$KDE_CONFIG_DIR/$rc" || die
+    done
 
-# --- DYNAMIC SONNET (SPELL CHECK) CONFIG ---
-# Create the KDE subdirectory
-mkdir -p "$KDE_CONFIG_DIR/KDE" || die
+    # --- DYNAMIC SONNET (SPELL CHECK) CONFIG ---
+    # Create the KDE subdirectory
+    mkdir -p "$KDE_CONFIG_DIR/KDE" || die
 
-# Extract just the language code (e.g., "en_US" from "en_US.UTF-8")
-# sys_locale is already defined earlier in your chroot script
-kde_lang="${sys_locale%%.*}" 
+    # Extract just the language code (e.g., "en_US" from "en_US.UTF-8")
+    kde_lang="${sys_locale%%.*}" 
+    
+    # Fallback safety: If the locale is generic (C or POSIX), default to en_US 
+    # so KDE doesn't get confused by "ignore_C=Amarok..."
+    [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
 
-# Generate the Sonnet config dynamically based on the user's chosen system locale
-cat <<EOF > "$KDE_CONFIG_DIR/KDE/Sonnet.conf"
+    # Generate the Sonnet config dynamically based on the user's chosen system locale
+    cat <<EOF > "$KDE_CONFIG_DIR/KDE/Sonnet.conf"
 [General]
 autodetectLanguage=false
 backgroundCheckerEnabled=false
@@ -216,8 +219,8 @@ preferredLanguages=@Invalid()
 skipRunTogether=false
 EOF
 
-chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
-chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
+    chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
+    chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
 
     clear; rootPassword
 fi
