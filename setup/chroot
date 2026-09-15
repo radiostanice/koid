@@ -6,6 +6,13 @@
 exitFunction () {
     xbps-reconfigure -fa || { commandFailure="xbps-reconfigure failed."; die; }
 
+    # --- SECURE DNS: Generate DNSSEC root key ---
+    # Unbound needs this to validate DNSSEC signatures on first boot
+    if command -v unbound-anchor >/dev/null 2>&1; then
+        unbound-anchor -a "/var/lib/unbound/root.key" || true
+        chown _unbound:_unbound /var/lib/unbound/root.key || true
+    fi
+
     # Drop xbps/ukify log since it's unreadable on a failed boot anyway
     rm -f /var/log/xbps.log
 
@@ -14,8 +21,6 @@ exitFunction () {
 
     # SAFETY ADDITION: Force the new "Void Linux" entry to the top of the UEFI boot order.
     # This prevents stubborn motherboards from ignoring the new UKI entry.
-    # CHANGED: use $newEntry captured at creation time; never re-grep by label
-    # (stale duplicate labels produced a multi-line value -> "Invalid BootOrder").
     if [ "$bootloader" = "uki" ] && [ -n "$newEntry" ]; then
         commandFailure="Setting default boot entry has failed."
         rest=$(efibootmgr | sed -n 's/^BootOrder: //p' | tr ',' '\n' | grep -vx "$newEntry" | paste -sd ',' -)
@@ -45,15 +50,12 @@ if [ "$secureboot" = "Yes" ]; then
     echo "Setting up Secure Boot with sbctl..."
     xbps-install -y sbctl || die "Failed to install sbctl."
 
-    # CHANGED: the sbctl package pre-creates /var/lib/sbctl (make_dirs), so a
-    # directory test is always true and create-keys never ran. Test the key file.
     if [ ! -f /var/lib/sbctl/keys/db/db.key ]; then
         sbctl create-keys || die "Failed to create Secure Boot keys."
         echo -e "${YELLOW}Secure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!${NC}"
     fi
 
     # Create the kernel hook for automatic signing
-    # NOTE: Named 70-sbctl-sign so it runs AFTER 60-ukify (lexical order)
     mkdir -p /etc/kernel.d/post-install
     cp /tmp/files/70-sbctl-sign /etc/kernel.d/post-install/70-sbctl-sign || die "Failed to install sbctl signing hook."
     chmod 755 /etc/kernel.d/post-install/70-sbctl-sign
@@ -90,8 +92,6 @@ if [ ! -f "/boot/efi/EFI/Linux/void-linux.efi" ]; then
     xbps-reconfigure -fa || die
 fi
 
-# NEW: hard gate. The xbps kernel-hooks trigger only LOGS hook failures (your log
-# showed a sbctl sign error followed by "configured successfully"), so verify here.
 if [ "$secureboot" = "Yes" ]; then
     commandFailure="UKI is not signed with sbctl keys."
     sbctl verify /boot/efi/EFI/Linux/void-linux.efi || die
