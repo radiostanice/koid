@@ -69,37 +69,66 @@ install() {
     local attempt=1 attempts=10 delay=5 rc
     
     while :; do
-        # 1. FAST NETWORK CHECK (Timeout: 10 seconds)
-        # We only use 'timeout' for the index sync (-S). This prevents the 60-second 
-        # freeze if the network is completely dead.
-        CONNECTION_TIMEOUT=10000 timeout -k 5 10 xbps-install -S -R "$repository" -r /mnt >/dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            echo -e "${YELLOW}Repository index sync failed. Network might be down.${NC}"
-            rc=1
-        else
-            # 2. MAIN PACKAGE INSTALLATION (No blind timeout!)
-            # We do not use 'timeout' here. Large packages take time to download; 
-            # wrapping them in timeout would kill healthy slow downloads.
-            CONNECTION_TIMEOUT=300000 xbps-install -y -R "$repository" -r /mnt "$@"
-            rc=$?
+        echo -e "${YELLOW}Starting installation attempt $attempt/$attempts...${NC}"
+        
+        # Run xbps-install in the background so we can monitor its health
+        CONNECTION_TIMEOUT=300000 xbps-install -y -R "$repository" -r /mnt "$@" > /tmp/xbps_install.log 2>&1 &
+        local xbps_pid=$!
+        
+        local stall_seconds=0
+        local last_cache_size=$(du -sk /mnt/var/cache/xbps/ 2>/dev/null | awk '{print $1}' || echo 0)
+        local last_cpu_ticks=$(awk '{print $14+$15}' /proc/$xbps_pid/stat 2>/dev/null || echo 0)
+        local dead=0
+        
+        # Monitor loop: check every 5 seconds
+        while kill -0 $xbps_pid 2>/dev/null; do
+            sleep 5
             
-            # Success: exit the loop
-            [ $rc -eq 0 ] && return 0
+            # If process finished, break
+            if ! kill -0 $xbps_pid 2>/dev/null; then
+                break
+            fi
             
-            echo -e "${YELLOW}Package installation failed on attempt $attempt/$attempts.${NC}"
-        fi
+            local current_cache_size=$(du -sk /mnt/var/cache/xbps/ 2>/dev/null | awk '{print $1}' || echo 0)
+            local current_cpu_ticks=$(awk '{print $14+$15}' /proc/$xbps_pid/stat 2>/dev/null || echo 0)
+            
+            # If EITHER cache is growing (downloading) OR CPU is working (configuring), it's healthy!
+            if [ "$current_cache_size" -gt "$last_cache_size" ] || [ "$current_cpu_ticks" -gt "$last_cpu_ticks" ]; then
+                last_cache_size=$current_cache_size
+                last_cpu_ticks=$current_cpu_ticks
+                stall_seconds=0
+            else
+                # No progress and no CPU activity -> likely blocked on a dead socket
+                stall_seconds=$((stall_seconds + 5))
+                if [ "$stall_seconds" -ge 30 ]; then
+                    echo -e "${RED}Process stalled for 30 seconds (likely dead network). Killing...${NC}"
+                    kill -9 $xbps_pid 2>/dev/null
+                    wait $xbps_pid 2>/dev/null
+                    dead=1
+                    break
+                fi
+            fi
+        done
+        
+        # Reap the exit code
+        wait $xbps_pid 2>/dev/null
+        rc=$?
+        
+        # If we killed it due to stall, force failure
+        [ "$dead" -eq 1 ] && rc=1
+        
+        # Success
+        [ $rc -eq 0 ] && return 0
         
         # Failure: check if we've exhausted retries
         if [ "$attempt" -ge "$attempts" ]; then
             die "Failed to install package(s): $* (after $attempts attempts)"
         fi
         
-        echo -e "${YELLOW}Pausing for ${delay} seconds to let the connection stabilize...${NC}"
+        echo -e "${YELLOW}Network issue detected. Pausing for ${delay} seconds...${NC}"
         sleep "$delay"
         
-        # 3. SMART WAIT: Wait until the network ACTUALLY responds before retrying.
-        # We use xbps-fetch to test the repository URL directly. This prevents the 
-        # "instant retry spam" because it won't proceed until the repo is reachable.
+        # Smart Wait: Wait until the network ACTUALLY responds before retrying.
         local net_ok=0
         while [ $net_ok -eq 0 ]; do
             if CONNECTION_TIMEOUT=5000 xbps-fetch -o /dev/null "$repository" >/dev/null 2>&1; then
@@ -112,7 +141,7 @@ install() {
         done
         
         attempt=$((attempt + 1))
-        # Exponential backoff for the initial delay, capped at 60 seconds
+        # Exponential backoff, capped at 60 seconds
         delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
     done
 }
