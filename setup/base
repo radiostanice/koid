@@ -120,8 +120,6 @@ command install -Dm644 "$VISS_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.c
 # Static resolv.conf pointing to our local Unbound instance
 command install -Dm644 "$VISS_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
 
-# Ensure unbound directories have correct ownership for the _unbound user
-chown -R _unbound:_unbound /mnt/var/lib/unbound /mnt/etc/unbound || die
 enableService unbound
 
 # --- INSTALL ADDITIONAL APPS ---
