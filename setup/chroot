@@ -6,9 +6,12 @@
 exitFunction () {
     xbps-reconfigure -fa || { commandFailure="xbps-reconfigure failed."; die; }
 
-    # --- SECURE DNS: Generate DNSSEC root key ---
-    # Unbound needs this to validate DNSSEC signatures on first boot
+    # --- SECURE DNS: ownership + DNSSEC root key ---
     if command -v unbound-anchor >/dev/null 2>&1; then
+        # Fix ownership now that we're inside the target rootfs
+        chown -R _unbound:_unbound /etc/unbound /var/lib/unbound || true
+
+        # Generate the DNSSEC trust anchor
         unbound-anchor -a "/var/lib/unbound/root.key" || true
         chown _unbound:_unbound /var/lib/unbound/root.key || true
     fi
