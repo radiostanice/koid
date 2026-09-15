@@ -178,7 +178,7 @@ commandFailure="Configuring KDE Plasma defaults has failed."
 KDE_CONFIG_DIR="/home/$username/.config"
 mkdir -p "$KDE_CONFIG_DIR" || die
 
-for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc sonnetrc; do
+for rc in ksplashrc baloofilerc krunnerrc ksmserverrc; do
     cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
     chmod 644 "$KDE_CONFIG_DIR/$rc" || die
 done
