@@ -97,10 +97,13 @@ if [ "$libc" = "glibc" ]; then
 fi
 echo "$hostname" > /mnt/etc/hostname || die
 
-# --- NETWORK MANAGER MAC RANDOMIZATION ---
-commandFailure="Configuring NetworkManager MAC randomization failed."
-command install -Dm644 "$VISS_FILES_DIR/00-mac-randomize.conf" \
-    /mnt/etc/NetworkManager/conf.d/00-mac-randomize.conf || die
+# --- NETWORK MANAGER HARDENING ---
+commandFailure="Configuring NetworkManager hardening failed."
+mkdir -p /mnt/etc/NetworkManager/conf.d || die
+
+# Install the combined hardening config (MAC randomization + dns=none)
+command install -Dm644 "$VISS_FILES_DIR/00-nm-setup.conf" \
+    /mnt/etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
 # --- NTS SECURE TIME SYNC ---
 commandFailure="Configuring Chrony for NTS has failed."
