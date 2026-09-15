@@ -213,8 +213,8 @@ kernelParamsConfig() {
 # --- 9. INITRAMFS CHOICE ---
 initrdConfig() {
     initrd=$(drawDialogBack --no-cancel --title "Initramfs Choice" --menu "Select your initramfs generator:" 0 0 2 \
-    "dracut" "- Default, robust Void initramfs generator" \
-    "tinyramfs" "- Small, fast POSIX Shell initramfs generator")
+    "tinyramfs" "- Small, fast POSIX Shell initramfs generator" \
+    "dracut" "- Default, robust Void initramfs generator")
     ret=$?
     if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
     gpuConfig
