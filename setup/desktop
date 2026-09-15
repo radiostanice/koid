@@ -35,12 +35,11 @@ for i in "${graphicsArray[@]}"; do
     esac
 done
 
-# --- NETWORK ---
-[ -n "$network" ] && [ "$network" != "none" ] && commandFailure="Network setup has failed."
-case "$network" in
-    NetworkManager) install NetworkManager; enableService NetworkManager ;;
-    dhcpcd) enableService dhcpcd ;;
-esac
+# --- NETWORK (NetworkManager only) ---
+commandFailure="Network setup has failed."
+
+install NetworkManager
+enableService NetworkManager
 
 # --- GUI INSTALLATION (STRICTLY MINIMAL KDE WAYLAND) ---
 commandFailure="GUI installation has failed"
