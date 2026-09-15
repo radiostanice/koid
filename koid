@@ -5,7 +5,7 @@
 # STRICT CONSTRAINTS: ext4, UKI (No GRUB), KDE Wayland, PipeWire, NetworkManager (with MAC randomization).
 # CHOICES: LUKS2 (argon2id) or None, dracut or tinyramfs.
 
-. "$(pwd)/misc/libviss" || { echo "$(pwd)/misc/libviss not found. Cannot continue."; exit 1; }
+. "$(pwd)/misc/libkoid" || { echo "$(pwd)/misc/libkoid not found. Cannot continue."; exit 1; }
 . "$(pwd)/setup/installer" || { commandFailure="$(pwd)/setup/installer not found. Cannot continue."; die; }
 
 # Catch termination signals and trigger cleanup
@@ -29,7 +29,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Void Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
+    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Koid Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then
         exit 0
@@ -341,7 +341,7 @@ _install() {
     exec 3>&1 4>&2
     exec > >(tee -a "$logFile") 2>&1
     {
-        echo "void-install-script log"
+        echo "koid-install log"
         echo "date: $(date)"
         echo "commit: $(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
         echo "environment: ${libc} ${ARCH} $(uname -r)"
@@ -379,7 +379,7 @@ EOF
     
     commandFailure="System chroot setup has failed."
     cp /etc/resolv.conf /mnt/etc/resolv.conf || die
-    cp -f "$(pwd)"/misc/libviss /mnt/tmp/libviss || die
+    cp -f "$(pwd)"/misc/libkoid /mnt/tmp/libkoid || die
     cp -f "$(pwd)"/setup/chroot /mnt/tmp/chroot || die
     cp -f "$(pwd)"/misc/60-ukify /mnt/tmp/60-ukify || die
     cp -r "$(pwd)"/files /mnt/tmp/files || die
