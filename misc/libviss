@@ -67,30 +67,52 @@ drawDialogBack() {
 
 install() {
     local attempt=1 attempts=10 delay=5 rc
+    
     while :; do
-        # -S is required: it fetches the repo index into the target rootdir.
-        # Explicitly set CONNECTION_TIMEOUT (in milliseconds) to ensure xbps 
-        # doesn't internally short-circuit on slow links (300000 = 5 minutes).
-        CONNECTION_TIMEOUT=300000 timeout -k 10 60 xbps-install -Sy -R "$repository" -r /mnt "$@"
-        rc=$?
+        # 1. FAST NETWORK CHECK (Timeout: 10 seconds)
+        # We only use 'timeout' for the index sync (-S). This prevents the 60-second 
+        # freeze if the network is completely dead.
+        CONNECTION_TIMEOUT=10000 timeout -k 5 10 xbps-install -S -R "$repository" -r /mnt >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}Repository index sync failed. Network might be down.${NC}"
+            rc=1
+        else
+            # 2. MAIN PACKAGE INSTALLATION (No blind timeout!)
+            # We do not use 'timeout' here. Large packages take time to download; 
+            # wrapping them in timeout would kill healthy slow downloads.
+            CONNECTION_TIMEOUT=300000 xbps-install -y -R "$repository" -r /mnt "$@"
+            rc=$?
+            
+            # Success: exit the loop
+            [ $rc -eq 0 ] && return 0
+            
+            echo -e "${YELLOW}Package installation failed on attempt $attempt/$attempts.${NC}"
+        fi
         
-        # Success: exit the loop
-        [ $rc -eq 0 ] && return 0
-
         # Failure: check if we've exhausted retries
         if [ "$attempt" -ge "$attempts" ]; then
             die "Failed to install package(s): $* (after $attempts attempts)"
         fi
         
-        # Clearer messaging so the user knows the script is intentionally pausing
-        echo -e "${YELLOW}Network issue detected on attempt $attempt/$attempts.${NC}"
-        echo -e "${YELLOW}Pausing for ${delay} seconds to let the connection stabilize before retrying...${NC}"
-        
-        # The sleep IS happening here. It prevents instant retry spam.
+        echo -e "${YELLOW}Pausing for ${delay} seconds to let the connection stabilize...${NC}"
         sleep "$delay"
         
+        # 3. SMART WAIT: Wait until the network ACTUALLY responds before retrying.
+        # We use xbps-fetch to test the repository URL directly. This prevents the 
+        # "instant retry spam" because it won't proceed until the repo is reachable.
+        local net_ok=0
+        while [ $net_ok -eq 0 ]; do
+            if CONNECTION_TIMEOUT=5000 xbps-fetch -o /dev/null "$repository" >/dev/null 2>&1; then
+                net_ok=1
+                echo -e "${GREEN}Network connectivity restored! Retrying immediately...${NC}"
+            else
+                echo -e "${YELLOW}Network still unreachable, waiting 5 more seconds...${NC}"
+                sleep 5
+            fi
+        done
+        
         attempt=$((attempt + 1))
-        # Exponential backoff, capped at 60 seconds
+        # Exponential backoff for the initial delay, capped at 60 seconds
         delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
     done
 }
