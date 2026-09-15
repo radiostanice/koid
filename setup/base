@@ -20,7 +20,7 @@ fi
 
 commandFailure="Base system installation has failed."
 
-XBPS_ARCH=$ARCH install base-system e2fsprogs binutils chrony nano
+XBPS_ARCH=$ARCH install base-system e2fsprogs binutils chrony nano unbound
 
 if [ "$kernel" != "linux" ] ; then
     install "$kernel"
@@ -109,6 +109,24 @@ command install -Dm644 "$VISS_FILES_DIR/00-nm-setup.conf" \
 commandFailure="Configuring Chrony for NTS has failed."
 command install -Dm644 "$VISS_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
 enableService chronyd
+
+# --- SECURE DNS (Unbound + DoT + DNSSEC) ---
+commandFailure="Configuring Unbound for Secure DNS has failed."
+mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound /mnt/etc/NetworkManager/conf.d || die
+
+# Install Unbound configuration
+command install -Dm644 "$VISS_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
+
+# Prevent NetworkManager from overwriting our local resolver
+command install -Dm644 "$VISS_FILES_DIR/99-unbound-dns.conf" \
+    /mnt/etc/NetworkManager/conf.d/99-unbound-dns.conf || die
+
+# Static resolv.conf pointing to our local Unbound instance
+command install -Dm644 "$VISS_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
+
+# Ensure unbound directories have correct ownership for the _unbound user
+chown -R _unbound:_unbound /mnt/var/lib/unbound /mnt/etc/unbound || die
+enableService unbound
 
 # --- INSTALL ADDITIONAL APPS ---
 if [ -n "$extra_packages" ]; then
