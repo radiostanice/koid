@@ -179,13 +179,19 @@ else
 
     # TTY1 Autologin
     mkdir -p /etc/sv/agetty-tty1
-    {
-        # conf is sourced by the agetty run script before exec'ing agetty:
-        # hold the tty1 login until the system bus is up, so pam_elogind can
-        # register the session and elogind can create /run/user/UID.
-        echo '[ -e /var/service/dbus ] && sv -w 15 wait dbus >/dev/null 2>&1'
-        echo "GETTY_ARGS=\"--noclear --autologin $username\""
-    } > /etc/sv/agetty-tty1/conf
+    cat > /etc/sv/agetty-tty1/conf <<EOF
+[ -e /var/service/dbus ] && sv -w 15 wait dbus >/dev/null 2>&1
+
+if [ -x /sbin/agetty -o -x /bin/agetty ]; then
+	# util-linux specific settings
+	if [ "\${tty}" = "tty1" ]; then
+		GETTY_ARGS="--autologin $username --noclear"
+	fi
+fi
+
+BAUD_RATE=38400
+TERM_NAME=linux
+EOF
 
     # --- KDE PLASMA HARDENED DEFAULTS ---
     commandFailure="Configuring KDE Plasma defaults has failed."
