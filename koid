@@ -125,17 +125,25 @@ localeConfig() {
 repositoryConfig() {
     drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 0
     ret=$?
-    if [ "$ret" -eq 3 ]; then localeConfig; return
+    if [ "$ret" -eq 3 ]; then 
+        localeConfig; return
     elif [ "$ret" -eq 0 ]; then
         xmirror
         repository=$(grep -h '^repository=' /etc/xbps.d/*-repository-main.conf 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d '[:space:]')
     else
-        [ "$libc" = "glibc" ] && repository="https://repo-default.voidlinux.org/current"
-        [ "$libc" = "musl" ] && repository="https://repo-default.voidlinux.org/current/musl"
+        if [ "$libc" = "musl" ]; then
+            repository="https://repo-default.voidlinux.org/current/musl"
+        else
+            repository="https://repo-default.voidlinux.org/current"
+        fi
     fi
     
-    [ "$libc" = "glibc" ] && ARCH="x86_64"
-    [ "$libc" = "musl" ] && ARCH="x86_64-musl"
+    if [ "$libc" = "musl" ]; then
+        ARCH="x86_64-musl"
+    else
+        ARCH="x86_64"
+    fi
+
     kernelParamsConfig
 }
 
