@@ -2,8 +2,7 @@
 
 # This script is an "orchestrator" for the other scripts that exist in the "setup" directory.
 
-# STRICT CONSTRAINTS: btrfs, UKI (No GRUB), KDE Wayland, PipeWire, NetworkManager (with MAC randomization).
-# CHOICES: dracut or tinyramfs.
+# STRICT CONSTRAINTS: btrfs, UKI (No GRUB), Booster, KDE Wayland, PipeWire, NetworkManager (with MAC randomization).
 
 . "$(pwd)/misc/libkoid" || { echo "$(pwd)/misc/libkoid not found. Cannot continue."; exit 1; }
 . "$(pwd)/setup/installer" || { commandFailure="$(pwd)/setup/installer not found. Cannot continue."; die; }
@@ -149,7 +148,7 @@ kernelConfig() {
 
 # --- 7.1 KERNEL SECURITY PRESETS ---
 kernelParamsConfig() {
-    local BASE_PARAMS="rw quiet loglevel=3"
+    local BASE_PARAMS="rw quiet loglevel=3 splash"
     
     local KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
     local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
@@ -186,11 +185,7 @@ kernelParamsConfig() {
 
 # --- 8. INITRAMFS CHOICE ---
 initrdConfig() {
-    initrd=$(drawDialogBack --no-cancel --title "Initramfs Choice" --menu "Select your initramfs generator:" 0 0 2 \
-    "tinyramfs" "- Small, fast POSIX Shell initramfs generator" \
-    "dracut" "- Default, robust Void initramfs generator")
-    ret=$?
-    if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
+    initrd="booster"
     gpuConfig
 }
 
