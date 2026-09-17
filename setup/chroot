@@ -139,6 +139,11 @@ ln -sf /usr/bin/doas /usr/bin/sudo || die
 sys_locale="${locale#LANG=}"
 [ -z "$sys_locale" ] && sys_locale="en_US.UTF-8"
 
+# Generate locales now so chrooted tools (snapper etc.) don't warn about them
+if [ -e /etc/default/libc-locales ]; then
+    xbps-reconfigure -f glibc-locales >/dev/null 2>&1 || true
+fi
+
 if [ -z "$username" ]; then
     clear; rootPassword
 else
@@ -176,7 +181,13 @@ else
 
     # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE) ---
     commandFailure="Configuring Btrfs snapshots with Snapper has failed."
-    
+
+    # snapper is a D-Bus client: it talks to snapperd over the system bus.
+    # No runit services run inside a chroot, so start a temporary bus here;
+    # D-Bus activation will spawn snapperd on demand.
+    mkdir -p /run/dbus || die
+    tmp_dbus_pid=$(dbus-daemon --system --fork --print-pid) || die
+
     # Snapper will detect and use the pre-created /.snapshots subvolume
     snapper -c root create-config / || die
 
@@ -191,6 +202,11 @@ else
            -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
            -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
            /etc/snapper/configs/root || die
+
+    # Tear the temporary bus down again. Kill by PID only: the chroot shares
+    # the PID namespace with the live system, so never "pkill dbus-daemon" here.
+    [ -n "$tmp_dbus_pid" ] && kill "$tmp_dbus_pid" 2>/dev/null || true
+    pkill -x snapperd 2>/dev/null || true
 
     # Enable snooze for hourly and daily tasks (which triggers snapper timeline and cleanup)
     # This completely avoids the need for cron or cronie, as snooze executes /etc/cron.{hourly,daily} scripts
