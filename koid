@@ -280,76 +280,70 @@ confirm() {
     else exit 0; fi
 }
 
-# ============================================================================
-# MAIN INSTALL FUNCTION - Replace entire _install() section
-# ============================================================================
-
+# --- INSTALLATION EXECUTION ---
 _install() {
-  [ -z "$EDITOR" ] && EDITOR="nano"
+    {
+        printf "koid-install log\n"
+        printf "date: %s\n" "$(date)"
+        printf "commit: %s\n" "$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        printf "environment: %s %s %s\n" "$libc" "$ARCH" "$(uname -r)"
+        printf "\n"
+        printf "user settings:\n"
+        printf "%b\n" "$settings"
+        printf "\n"
+    } >> "$logFile"
+    
+    FIFO=$(mktemp -u)
+    mkfifo "$FIFO"
+    tee -a "$logFile" < "$FIFO" &
+    TEEPID=$!
+    exec >"$FIFO" 2>&1
 
-  logFile="/tmp/koid-install.log"
-
-  {
-    printf "koid-install log\n"
-    printf "date: %s\n" "$(date)"
-    printf "commit: %s\n" "$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-    printf "environment: %s %s %s\n" "$libc" "$ARCH" "$(uname -r)"
-    printf "\n"
-    printf "user settings:\n"
-    printf "%b\n" "$settings"
-    printf "\n"
-    printf "===== INSTALLATION LOG =====\n"
-  } > "$logFile"
-
-  # Source all setup modules and run installation
-  # Use subshell with tee instead of exec to avoid buffer issues
-  (
-    . "$(pwd)"/misc/libkoid
+    printf "Starting installation...\n"
     . "$(pwd)"/setup/disk
+
+    mkdir -p /mnt/tmp
+
+    cat <<EOF > /mnt/tmp/installerOptions
+timezone='$timezone'
+diskInput='$diskInput'
+username='$username'
+secureboot='$secureboot'
+locale='$locale'
+EOF
     . "$(pwd)"/setup/base
     . "$(pwd)"/setup/desktop
+    
+    commandFailure="System chroot setup has failed."
+    cp /etc/resolv.conf /mnt/etc/resolv.conf || die
+    cp -f "$(pwd)"/misc/libkoid /mnt/tmp/libkoid || die
+    cp -f "$(pwd)"/setup/chroot /mnt/tmp/chroot || die
+    cp -f "$(pwd)"/misc/60-ukify /mnt/tmp/60-ukify || die
+    cp -R "$(pwd)"/files /mnt/tmp/files || die
+    
+    system "/bin/sh /tmp/chroot"
+    clear
+    system "xbps-remove -RyO"
 
-    commandFailure=""
+    system "find /var/cache/xbps -name '*.xbps' -delete 2>/dev/null || true"
 
-    trap 'cleanup_on_exit' EXIT INT TERM
+    exec 1>&3 2>&4
+    wait "$TEEPID"
+    rm -f "$FIFO"
+    clear
 
-    _info "Starting koid installation..."
-
-    disk_setup "$DISK_DEVICE" "$DISK_PASSPHRASE" "$DISK_LAYOUT" "$DISK_SIZE" || die
-    _info "Disk setup complete"
-
-    base_setup "$SYSTEM_HOSTNAME" "$SYSTEM_LOCALE" "$SYSTEM_TIMEZONE" || die
-    _info "Base system setup complete"
-
-    if [ "$DESKTOP_ENVIRONMENT" != "none" ]; then
-      desktop_setup "$DESKTOP_ENVIRONMENT" || die
-      _info "Desktop environment setup complete"
+    rm -f "$logFile"
+    
+    if [ "$secureboot" = "Yes" ]; then
+        drawDialog --title "!!! CRITICAL: SECURE BOOT !!!" \
+                   --msgbox "Custom Secure Boot keys were generated.\n\nYou MUST enter your BIOS/UEFI settings on your FIRST BOOT and enroll these keys (or the hash of the UKI).\n\nIf you do not do this, the system WILL NOT BOOT." 16 60
     fi
 
-    _info "Installation completed successfully"
-
-  ) 2>&1 | tee -a "$logFile"
-
-  exit_code=$?
-
-  # Ensure all buffers are flushed
-  sync
-  sleep 0.5
-
-  # Display log to user
-  clear
-  _info "Installation log:"
-  cat "$logFile"
-
-  if [ "$exit_code" -eq 0 ]; then
-    _success "Installation completed successfully!"
-  else
-    _error "Installation failed. See log above."
-  fi
-
-  rm -f "$logFile"
-
-  return "$exit_code"
+    if drawDialog --title "Installation Complete" --yes-label "Reboot" --no-label "Exit" --yesno "Installation finished successfully.\n\nTotal installer runtime: ${SECONDS} seconds." 0 0 ; then
+        reboot
+    else
+        exit 0
+    fi
 }
 
 # Start the flow
