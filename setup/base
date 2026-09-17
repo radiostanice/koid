@@ -18,8 +18,8 @@ fi
 
 commandFailure="Base system installation has failed."
 
-# Added btrfs-progs, removed e2fsprogs, added cryptsetup directly
-XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound
+# Added btrfs-progs, cryptsetup, snapper, snooze, and btrfs-assistant (GUI)
+XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound snapper snooze btrfs-assistant
 
 if [ "$kernel" != "linux" ] ; then
     install "$kernel"
@@ -58,15 +58,16 @@ root_uuid=$(blkid -o value -s UUID "$format_target")
 # 1. Hardened ESP (/boot/efi)
 echo "UUID=$esp_uuid /boot/efi vfat rw,nosuid,nodev,noexec,umask=0022,flush 0 2" >> /mnt/etc/fstab || die
 
-# 2. Btrfs Subvolumes (with discard=async for native TRIM support)
-echo "UUID=$root_uuid / btrfs subvol=@,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /home btrfs subvol=@home,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/log btrfs subvol=@log,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/cache btrfs subvol=@cache,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/tmp btrfs subvol=@tmp,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
+# 2. Hardened Btrfs Subvolumes (with discard=async for native TRIM support)
+echo "UUID=$root_uuid / btrfs subvol=@,compress=zstd:1,discard=async,nosuid,nodev 0 0" >> /mnt/etc/fstab || die
+echo "UUID=$root_uuid /home btrfs subvol=@home,compress=zstd:1,discard=async,nosuid,nodev 0 0" >> /mnt/etc/fstab || die
+echo "UUID=$root_uuid /var/log btrfs subvol=@log,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
+echo "UUID=$root_uuid /var/cache btrfs subvol=@cache,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
+echo "UUID=$root_uuid /var/tmp btrfs subvol=@tmp,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
+echo "UUID=$root_uuid /.snapshots btrfs subvol=@snapshots,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
 
 # 3. Hardened tmpfs for /tmp
-echo "tmpfs /tmp tmpfs defaults,nosuid,nodev 0 0" >> /mnt/etc/fstab || die
+echo "tmpfs /tmp tmpfs defaults,nosuid,nodev,noexec,mode=1777 0 0" >> /mnt/etc/fstab || die
 
 # 4. UKI Kernel Command Line
 mkdir -p /mnt/etc/kernel || die
