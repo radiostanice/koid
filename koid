@@ -11,15 +11,7 @@
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
-# --- HARDCODED SETTINGS ---
-basesystem="base-system"
-filesystem="btrfs"
-bootloader="uki"
-network="NetworkManager"
-audio="pipewire"
-desktop="kde"
-
-drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs filesystem only (with discard=async)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n- Hardened fstab defaults\n\nNo changes will be made to the disk until you confirm." 0 0
+drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
 
 # --- 1. DISK SELECTION ---
 diskConfig() {
@@ -288,7 +280,7 @@ appsConfig() {
 # --- 12. CONFIRMATION ---
 confirm() {
     local settings="Target disk: $diskInput (WILL BE WIPED)\n"
-    settings+="Filesystem: Btrfs (compress=zstd, discard=async)\n"
+    settings+="Filesystem: Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n"
     settings+="Encryption: LUKS2 (argon2id)\n"
     settings+="Bootloader: UKI (No GRUB)\n"
     settings+="Kernel: $kernel\n"
@@ -339,13 +331,13 @@ _install() {
     mkdir -p /mnt/tmp
     
     cat <<EOF > /mnt/tmp/installerOptions
-bootloader=${bootloader@Q}
+bootloader=uki
 su=${su@Q}
 timezone=${timezone@Q}
 encryption="Yes"
 diskInput=${diskInput@Q}
 username=${username@Q}
-desktop=${desktop@Q}
+desktop=kde
 root=${root@Q}
 initrd=${initrd@Q}
 graphics=${graphics@Q}
