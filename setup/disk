@@ -11,23 +11,33 @@ awk '$2 ~ /^\/mnt(\/.*)?$/ {print $2}' /proc/mounts | sort -r | while IFS= read 
     echo "Unmounting $mount_point..."
     umount -f -l "$mount_point" 2>/dev/null || true
 done
+
+# 1b. Unmount anything backed by a device-mapper device, wherever it is
+#     mounted (a leftover mount outside /mnt would keep the LUKS container busy).
+awk '$1 ~ /^\/dev\/mapper\// {print $2}' /proc/mounts | sort -r | while IFS= read -r mount_point; do
+    [ -z "$mount_point" ] && continue
+    echo "Unmounting mapper mount $mount_point..."
+    umount -f -l "$mount_point" 2>/dev/null || true
+done
+
 umount -R /mnt 2>/dev/null || true
 udevadm settle
 
-# 2. Our mapping name is a constant, so close it BY NAME.
-if cryptsetup status void_root >/dev/null 2>&1; then
-    echo "Closing LUKS mapping void_root..."
-    cryptsetup close void_root || true
-    udevadm settle
-fi
+# 2. Kill leftover chroot processes, then close the LUKS container with
+#    bounded retries. This is the step that used to fail silently and trip
+#    the hard gate below on every re-run.
+kill_chroot_procs
 
-# Still present (busy/suspended)? Force it. (No --retry: fail fast,
-# the gate below reports it cleanly instead of spamming ioctls.)
-if cryptsetup status void_root >/dev/null 2>&1; then
-    echo "Forcing removal of void_root..."
-    dmsetup remove --force void_root || true
-    udevadm settle
-fi
+attempt=1
+while [ "$attempt" -le 5 ]; do
+    cryptsetup status void_root >/dev/null 2>&1 || break
+    echo "Closing LUKS mapping void_root... attempt $attempt"
+    cryptsetup close void_root 2>/dev/null && break
+    dmsetup remove --force void_root 2>/dev/null && break
+    sleep 1
+    attempt=$((attempt + 1))
+done
+udevadm settle
 
 # Stale /dev/mapper node with no kernel dm device behind it.
 if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
@@ -36,7 +46,18 @@ if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; the
 fi
 
 # 2b. HARD GATE: refuse to touch the disk unless the name is truly free.
+#     If it still trips, print the actual offenders instead of guessing.
 if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
+    echo "void_root is still busy. Offending processes:" >&2
+    for pdir in /proc/[0-9]*; do
+        pid=${pdir#/proc/}
+        proot=$(readlink "$pdir/root" 2>/dev/null) || continue
+        case "$proot" in
+            /mnt|/mnt/*) echo "  pid $pid ($(cat "$pdir/comm" 2>/dev/null))" >&2 ;;
+        esac
+    done
+    echo "Offending mounts:" >&2
+    grep -F '/dev/mapper/void_root' /proc/mounts >&2
     commandFailure="void_root still present after cleanup (something holds it busy). Reboot the live session and rerun."
     die
 fi
@@ -54,7 +75,7 @@ udevadm settle
 
 # 4. Wipe filesystem signatures from the disk and all its partitions
 wipefs --all --force "$diskInput" 2>/dev/null || true
-for part in "${diskInput}"*; do
+for part in "$diskInput"*; do
     [ -b "$part" ] && wipefs --all --force "$part" 2>/dev/null || true
 done
 
@@ -140,28 +161,27 @@ if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
     fi
 fi
 
-# local is removed because this file is sourced at top-level scope
 crypt_options="--type luks2 --batch-mode --verify-passphrase --pbkdf argon2id"
 if [ "$is_ssd" -eq 1 ]; then
     crypt_options="$crypt_options --allow-discards"
 fi
 
-    # shellcheck disable=SC2086
-    while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
+# shellcheck disable=SC2086
+while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
 
-    printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
-    # Bounded retries: an infinite loop here spins forever on non-passphrase
-    # errors like "Device void_root already exists."
-    for attempt in 1 2 3; do
-        cryptsetup luksOpen "$root" void_root && break
-        if [ "$attempt" -eq 3 ]; then
-            commandFailure="Opening the LUKS container failed."
-            die
-        fi
-        echo "Failed to open LUKS container, retrying ($attempt/3)..."
-    done
+printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
+# Bounded retries: an infinite loop here spins forever on non-passphrase
+# errors like "Device void_root already exists."
+for attempt in 1 2 3; do
+    cryptsetup luksOpen "$root" void_root && break
+    if [ "$attempt" -eq 3 ]; then
+        commandFailure="Opening the LUKS container failed."
+        die
+    fi
+    echo "Failed to open LUKS container, retrying ($attempt/3)..."
+done
 
-    format_target="/dev/mapper/void_root"
+format_target="/dev/mapper/void_root"
 
 # --- FORMAT ROOT (BTRFS ONLY) ---
 commandFailure="Formatting root as Btrfs has failed."
@@ -169,7 +189,6 @@ mkfs.btrfs -f "$format_target" || die
 
 # --- MOUNT ROOT & CREATE SUBVOLUMES ---
 commandFailure="Mounting Btrfs root has failed."
-# Mount the top level to create subvolumes
 mount -o compress=zstd:1 "$format_target" /mnt || die
 
 btrfs subvolume create /mnt/@ || die
