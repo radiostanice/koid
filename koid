@@ -21,7 +21,7 @@ drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, ha
 # --- 1. DISK SELECTION ---
 diskConfig() {
     tmpmenu=$(mktemp)
-    lsblk -d -o NAME,SIZE -n -e7 > "$tmpmenu"
+    lsblk -d -o NAME,SIZE -n -e 7,254 > "$tmpmenu"
     set --
     while read -r name size; do
         [ -n "$name" ] && set -- "$@" "$name" "$size"
