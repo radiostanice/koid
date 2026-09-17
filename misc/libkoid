@@ -10,11 +10,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-_KOID_MISC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+_KOID_MISC_DIR="$(pwd)/misc"
 if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
     export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
 fi
-KOID_FILES_DIR=$(CDPATH= cd -- "${_KOID_MISC_DIR}/../files" && pwd)
+KOID_FILES_DIR="$(pwd)/files"
 
 die() {
     exec 1>&3 2>&4  # Restore original stdout/stderr
