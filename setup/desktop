@@ -14,11 +14,8 @@ for i in "${graphicsArray[@]}"; do
             ;;
         nvidia)
             install void-repo-nonfree
-            if [ "$kernel" == "linux-lts" ]; then
-                install nvidia-lts
-            else
-                install nvidia
-            fi
+            # Hardcoded to linux-lts
+            install nvidia-lts
             setKernelParam "nvidia_drm.modeset=1"
             ;;
         nvidia-nouveau)
