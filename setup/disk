@@ -4,14 +4,18 @@ echo "Running setup/disk..."
 # --- CLEANUP PREVIOUS INSTALLATION ---
 echo "Cleaning previous installation..."
 
-# 1. Unmount everything first (critical before wiping), deepest mounts first
+# 1. Unmount everything under /mnt, deepest mounts first.
+#    findmnt sees ALL mountpoints; lsblk -l only reports one per device,
+#    which left /mnt and friends mounted and made cryptsetup close fail.
 while IFS= read -r mount_point; do
     [ -z "$mount_point" ] && continue
     echo "Unmounting $mount_point..."
     umount -f -l "$mount_point" 2>/dev/null || true
-done < <(lsblk -ln -o MOUNTPOINT "$diskInput" 2>/dev/null | sort -r)
+done < <(findmnt -lnro TARGET | grep -E '^/mnt(/.*)?$' | sort -r)
 
 # 2. Close LUKS containers / remove stale dm mappings backed by this disk.
+#    Ask cryptsetup itself which device each mapping wraps instead of guessing
+#    with lsblk PKNAME greps.
 for mapper in /dev/mapper/*; do
     [ -b "$mapper" ] || continue
     name=$(basename "$mapper")
@@ -19,11 +23,26 @@ for mapper in /dev/mapper/*; do
     case "$backing" in
         "$diskInput"*)
             echo "Closing LUKS mapping $name..."
-            cryptsetup close "$name" 2>/dev/null || dmsetup remove --force "$name" 2>/dev/null || true
+            cryptsetup close "$name" || dmsetup remove --force "$name" || true
             ;;
     esac
 done
 udevadm settle
+
+# 2b. HARD GATE: never wipe a disk that still has a live mapping on it.
+#     If the close above failed (device busy), abort loudly here instead of
+#     running into a "Device void_root already exists" loop later.
+for mapper in /dev/mapper/*; do
+    [ -b "$mapper" ] || continue
+    name=$(basename "$mapper")
+    backing=$(cryptsetup status "$name" 2>/dev/null | sed -n 's/^ *device: *//p')
+    case "$backing" in
+        "$diskInput"*)
+            commandFailure="Mapping '$name' is still active on $diskInput (device busy?). Close it manually or reboot the live session."
+            die
+            ;;
+    esac
+done
 
 # 3. Force the kernel to drop the old table
 for i in {1..5}; do
@@ -127,12 +146,21 @@ if [ "$is_ssd" -eq 1 ]; then
     crypt_options+=("--allow-discards")
 fi
 
-while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
+    while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
 
-echo -e "${YELLOW}Opening encrypted partition...${NC}"
-while ! cryptsetup luksOpen "$root" void_root; do :; done
+    echo -e "${YELLOW}Opening encrypted partition...${NC}"
+    # Bounded retries: an infinite loop here spins forever on non-passphrase
+    # errors like "Device void_root already exists."
+    for attempt in 1 2 3; do
+        cryptsetup luksOpen "$root" void_root && break
+        if [ "$attempt" -eq 3 ]; then
+            commandFailure="Opening the LUKS container failed."
+            die
+        fi
+        echo "Failed to open LUKS container, retrying ($attempt/3)..."
+    done
 
-format_target="/dev/mapper/void_root"
+    format_target="/dev/mapper/void_root"
 
 # --- FORMAT ROOT (BTRFS ONLY) ---
 commandFailure="Formatting root as Btrfs has failed."
