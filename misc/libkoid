@@ -1,23 +1,42 @@
 #!/bin/sh
-# void-install-script general library
+# Shared utilities for the Koid Linux installer.
+
+# --- Strict error handling ---
+set -eu
+commandFailure="An unknown error has occurred."
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# --- 1. FILES AND DIALOG THEME SETUP ---
 _KOID_MISC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
     export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
 fi
 KOID_FILES_DIR=$(CDPATH= cd -- "${_KOID_MISC_DIR}/../files" && pwd)
 
-# --- Kill leftovers from a previous chroot session ---
-# Daemons started inside the chroot (dbus-daemon, snapperd, ...) keep their
-# root/cwd inside /mnt. Lazy unmounts detach the mounts but the filesystem -
-# and thus the LUKS container backing it - stays busy until they are gone.
+die() {
+    exec 1>&3 2>&4  # Restore original stdout/stderr
+    printf "\n[ERROR] %s\n" "${1:-${commandFailure}}" >&2
+    cleanup_mounts
+    exit 1
+}
+
+# Wrapper around xbps-install that logs output and calls die on failure
+install() {
+    xbps-install -y -U --repository "$repository" --root /mnt "$@" || die
+}
+
+# Wrapper around sh -c that calls die on failure
+system() {
+    sh -c "$@" || die
+}
+
+# --- Process Killing ---
+# Kills any process inside the chroot, or any host process with its root/cwd inside /mnt.
 kill_chroot_procs() {
+    # Kill any process whose root or cwd is /mnt
     for pdir in /proc/[0-9]*; do
         pid=${pdir#/proc/}
         [ "$pid" = "$$" ] && continue
@@ -27,40 +46,32 @@ kill_chroot_procs() {
         esac
         pcwd=$(readlink "$pdir/cwd" 2>/dev/null) || continue
         case "$pcwd" in
-            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true ;;
+            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true; continue ;;
         esac
     done
+
+    # Also kill processes holding files open in /mnt
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k -m /mnt 2>/dev/null || true
+    fi
 }
 
 # --- Robust Cleanup Function ---
 cleanup_mounts() {
-    # Unmount chroot virtual filesystems
-    for fs in proc sys dev/pts dev/shm dev run tmp; do
-        if mountpoint -q "/mnt/$fs" 2>/dev/null; then
-            umount -f -l "/mnt/$fs" 2>/dev/null
-        fi
-    done
-    swapoff -a 2>/dev/null
+    # Kill chroot leftovers FIRST, so they don't hold the filesystem busy
+    kill_chroot_procs
 
-    # Unmount anything backed by a device-mapper device, wherever it is mounted
+    # Unmount everything recursively with lazy unmount
+    # This handles nested bind mounts, subvolumes, etc.
+    umount -l -R /mnt 2>/dev/null || true
+    
+    # Also unmount any stray mapper mounts that might not be under /mnt
     mapper_mounts=$(awk '$1 ~ /^\/dev\/mapper\// {print $2}' /proc/mounts | sort -r)
     for m in $mapper_mounts; do
-        umount -f -l "$m" 2>/dev/null
+        umount -l "$m" 2>/dev/null
     done
 
-    # Unmount all mounted partitions inside /mnt in reverse order
-    mounts=$(mount | awk '{print $3}' | grep '^/mnt/' | sort -r)
-    for m in $mounts; do
-        umount -f -l "$m" 2>/dev/null
-    done
-
-    # Unmount /mnt itself
-    if mountpoint -q /mnt 2>/dev/null; then
-        umount -f -l /mnt 2>/dev/null
-    fi
-
-    # Free the LUKS device: kill chroot leftovers, then close the container
-    kill_chroot_procs
+    # Free the LUKS device
     if cryptsetup status void_root >/dev/null 2>&1; then
         cryptsetup close void_root 2>/dev/null || dmsetup remove --force void_root 2>/dev/null || true
     fi
@@ -72,26 +83,6 @@ cleanup_mounts() {
     fi
 }
 
-# --- Improved Error Handler ---
-die() {
-    msg="${1:-$commandFailure}"
-
-    tput reset 2>/dev/null || clear
-
-    # Restore kernel logging if modified
-    if [ -w /proc/sys/kernel/printk ]; then
-        echo 4 > /proc/sys/kernel/printk
-    fi
-
-    printf "\n%bINSTALLATION ABORTED%b\n" "$RED" "$NC"
-    printf "%bReason: %s%b\n\n" "$RED" "$msg" "$NC"
-    printf "Attempting to cleanly unmount partitions...\n"
-
-    cleanup_mounts
-    printf "\nYou may now safely exit or reboot.\n"
-    exit 1
-}
-
 drawDialog() {
     dialog --stdout --no-mouse \
            --backtitle "Koid Linux Installer" "$@"
@@ -99,14 +90,6 @@ drawDialog() {
 
 drawDialogBack() {
     dialog --stdout --no-mouse --backtitle "Koid Linux Installer" --extra-button --extra-label "Back" "$@"
-}
-
-install() {
-    xbps-install -Sy -R "$repository" -r /mnt "$@" || die "Failed to install package(s): $*"
-}
-
-system() {
-    chroot /mnt /bin/sh -c "$@" || die "Chroot command failed: $*"
 }
 
 setKernelParam() {
