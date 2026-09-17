@@ -52,8 +52,8 @@ install kwin xorg-server-xwayland
 install elogind polkit-elogind dbus
 enableService polkitd
 
-# Plasma-specific integrations for audio and network system tray widgets, terminal, the default sound theme, and power profile management
-install plasma-pa plasma-nm konsole ocean-sound-theme power-profiles-daemon
+# Plasma-specific integrations for audio and network system tray widgets, the default sound theme, and power profile management
+install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon
 
 # Basic XDG utilities
 install xdg-user-dirs xdg-utils 
@@ -64,11 +64,15 @@ commandFailure="System-wide autostart and service setup has failed."
 # Ensure the system-wide autostart directory exists inside the target system
 system "mkdir -p /etc/xdg/autostart"
 
-# --- EXTRA PACKAGES SETUP ---
-if echo "$extra_packages" | grep -qw "kinfocenter"; then
-    install aha fwupd lm_sensors clinfo glxinfo Vulkan-Tools wayland-utils xdpyinfo mesa-demos
-fi
+# --- DEFAULT PACKAGES  ---
+# kinfocenter
+install kinfocenter aha fwupd lm_sensors clinfo glxinfo Vulkan-Tools wayland-utils xdpyinfo mesa-demos
+# file manager
+install dolphin
+# terminal
+install konsole
 
+# --- EXTRA PACKAGES SETUP ---
 if echo "$extra_packages" | grep -qw "oxygen"; then
     install oxygen-sounds
 fi
