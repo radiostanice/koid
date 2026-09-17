@@ -13,10 +13,8 @@ done
 [ -n "$(ls -A /mnt/var/db/xbps/keys 2>/dev/null)" ] || { commandFailure="No XBPS keys were copied."; die; }
 
 # --- PRE-INSTALL IGNOREPKG CONFIGURATION ---
-# Hardcoded ignores for the standard kernel and sudo
 mkdir -p /mnt/etc/xbps.d
-echo "ignorepkg=sudo" >> /mnt/etc/xbps.d/ignore.conf || die
-echo "ignorepkg=linux" >> /mnt/etc/xbps.d/ignore.conf || die
+cat "$KOID_FILES_DIR/ignore.conf" >> /mnt/etc/xbps.d/ignore.conf || die
 
 commandFailure="Base system installation has failed."
 
@@ -51,19 +49,10 @@ esp_uuid=$(blkid -o value -s UUID "$esp")
 root_uuid=$(blkid -o value -s UUID "$format_target")
 [ -n "$root_uuid" ] || die "Failed to get UUID for root partition $format_target."
 
-# 1. Hardened ESP (/boot/efi)
-echo "UUID=$esp_uuid /boot/efi vfat rw,nosuid,nodev,noexec,umask=0022,flush 0 2" >> /mnt/etc/fstab || die
-
-# 2. Hardened Btrfs Subvolumes (with discard=async for native TRIM support)
-echo "UUID=$root_uuid / btrfs subvol=@,compress=zstd:1,discard=async,nosuid,nodev 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /home btrfs subvol=@home,compress=zstd:1,discard=async,nosuid,nodev 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/log btrfs subvol=@log,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/cache btrfs subvol=@cache,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /var/tmp btrfs subvol=@tmp,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0" >> /mnt/etc/fstab || die
-echo "UUID=$root_uuid /.snapshots btrfs subvol=@snapshots,compress=zstd:1,discard=async 0 0" >> /mnt/etc/fstab || die
-
-# 3. Hardened tmpfs for /tmp
-echo "tmpfs /tmp tmpfs defaults,nosuid,nodev,noexec,mode=1777 0 0" >> /mnt/etc/fstab || die
+# Generate fstab from template
+sed -e "s|@ESP_UUID@|$esp_uuid|g" \
+    -e "s|@ROOT_UUID@|$root_uuid|g" \
+    "$KOID_FILES_DIR/fstab.template" > /mnt/etc/fstab || die
 
 # --- UKI KERNEL COMMAND LINE ---
 commandFailure="Configuring UKI kernel command line has failed."
