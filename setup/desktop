@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
 # --- GRAPHICS DRIVERS ---
-graphicsArray=($graphics)
+set -- $graphics
 
 [ -n "$graphics" ] && commandFailure="Graphics driver installation has failed."
-for i in "${graphicsArray[@]}"; do
+for i in "$@"; do
     case $i in
         amd)
             install mesa-dri vulkan-loader mesa-vulkan-radeon mesa-vaapi
