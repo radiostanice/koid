@@ -9,7 +9,7 @@ echo "Cleaning previous installation..."
 while IFS= read -r mount_point; do
     [ -z "$mount_point" ] && continue
     echo "Unmounting $mount_point..."
-    umount -f -l "$mount_point" 2>/dev/null || true
+    umount -f "$mount_point" 2>/dev/null || true
 done < <(awk '$2 ~ /^\/mnt(\/.*)?$/ {print $2}' /proc/mounts | sort -r)
 umount -R /mnt 2>/dev/null || true
 udevadm settle
