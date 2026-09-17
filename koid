@@ -7,6 +7,7 @@
 . "$(pwd)/misc/libkoid" || { echo "$(pwd)/misc/libkoid not found. Cannot continue."; exit 1; }
 . "$(pwd)/setup/installer" || { commandFailure="$(pwd)/setup/installer not found. Cannot continue."; die; }
 
+trap 'echo "[debug] koid exited at line $LINENO, status $?" >&2' EXIT
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 trap 'cleanup_mounts 2>/dev/null' EXIT
