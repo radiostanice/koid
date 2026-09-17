@@ -51,59 +51,56 @@ kill_chroot_procs() {
     done
 
     # Also kill processes holding files open in /mnt
-    if command -v fuser >/dev/null 2>&1; then
+    if command -v fuser >/dev/null 2>&1 && \
+       awk '$2 == "/mnt" {found=1} END {exit !found}' /proc/mounts; then
         fuser -k -m /mnt 2>/dev/null || true
     fi
 }
 
 # --- Robust Cleanup Function ---
 cleanup_mounts() {
-    # Kill chroot leftovers FIRST, so they don't hold the filesystem busy
     kill_chroot_procs
 
-    # Sync filesystems to flush any dirty page caches.
-    # This is CRITICAL to avoid "buffer I/O error" on subsequent runs!
+    # Flush dirty pages: forced/lazy teardown with dirty caches is what
+    # causes "Buffer I/O error" on the next run.
     sync
     swapoff -a 2>/dev/null || true
 
-    # 1. Unmount chroot virtual filesystems explicitly
     for fs in proc sys dev/pts dev/shm dev run tmp; do
         umount -f "/mnt/$fs" 2>/dev/null || true
     done
 
-    # 2. Recursively unmount everything under /mnt in reverse alphabetical order.
-    # We do not use "umount -l -R" because:
-    # a) "-R" is not POSIX compliant (BusyBox umount doesn't have it).
-    # b) "-l" (lazy) detaches the mount from the namespace but leaves the kernel
-    #    VFS attached with dirty caches, causing "buffer I/O error" and "device busy"
-    #    errors when trying to close LUKS or format the device later.
-    while true; do
-        # Find the alphabetically last mount under /mnt to ensure nested mounts are 
-        # unmounted before their parents (e.g., /mnt/proc/sys before /mnt/proc).
-        m=$(awk '$3 ~ /^\/mnt\// {print $3}' /proc/mounts | sort -r | head -n 1)
+    # Deepest-first hard unmount of everything under /mnt.
+    # NO "-l": lazy hides mounts from mount/lsof but keeps the LUKS device busy.
+    while :; do
+        m=$(awk '$2 ~ /^\/mnt\// {print $2}' /proc/mounts | sort -r | head -n 1)
         [ -z "$m" ] && break
         umount -f "$m" 2>/dev/null || break
     done
-
-    # 3. Unmount /mnt itself
     umount -f /mnt 2>/dev/null || true
 
-    # 4. Drop stray mapper mounts that might not be under /mnt
-    while true; do
+    while :; do
         m=$(awk '$1 ~ /^\/dev\/mapper\// {print $2}' /proc/mounts | sort -r | head -n 1)
         [ -z "$m" ] && break
         umount -f "$m" 2>/dev/null || break
     done
 
-    # 5. Free the LUKS device cleanly. 
-    # We do NOT use "dmsetup remove --force" as it forcefully detaches the device 
-    # while the kernel still holds dirty caches, leading to future I/O errors!
-    if cryptsetup status void_root >/dev/null 2>&1; then
-        cryptsetup close void_root 2>/dev/null || true
+    # Kill holders of the LUKS *block device* (works even for detached mounts,
+    # unlike fuser -m /mnt which would target the live rootfs!)
+    if [ -e /dev/mapper/void_root ]; then
+        fuser -km /dev/mapper/void_root 2>/dev/null || true
     fi
+
+    # Clean close with retries. NO dmsetup remove --force.
+    i=1
+    while [ "$i" -le 5 ]; do
+        cryptsetup status void_root >/dev/null 2>&1 || break
+        cryptsetup close void_root 2>/dev/null && break
+        sleep 1
+        i=$((i + 1))
+    done
     udevadm settle 2>/dev/null || true
 
-    # 6. Drop a stale mapper node if the kernel mapping is really gone
     if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
         rm -f /dev/mapper/void_root
     fi
