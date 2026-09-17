@@ -5,44 +5,41 @@ echo "Running setup/disk..."
 echo "Cleaning previous installation..."
 
 # 1. Unmount everything under /mnt, deepest mounts first.
-#    findmnt sees ALL mountpoints; lsblk -l only reports one per device,
-#    which left /mnt and friends mounted and made cryptsetup close fail.
 while IFS= read -r mount_point; do
     [ -z "$mount_point" ] && continue
     echo "Unmounting $mount_point..."
     umount -f -l "$mount_point" 2>/dev/null || true
 done < <(findmnt -lnro TARGET | grep -E '^/mnt(/.*)?$' | sort -r)
-
-# 2. Close LUKS containers / remove stale dm mappings backed by this disk.
-#    Ask cryptsetup itself which device each mapping wraps instead of guessing
-#    with lsblk PKNAME greps.
-for mapper in /dev/mapper/*; do
-    [ -b "$mapper" ] || continue
-    name=$(basename "$mapper")
-    backing=$(cryptsetup status "$name" 2>/dev/null | sed -n 's/^ *device: *//p')
-    case "$backing" in
-        "$diskInput"*)
-            echo "Closing LUKS mapping $name..."
-            cryptsetup close "$name" || dmsetup remove --force "$name" || true
-            ;;
-    esac
-done
 udevadm settle
 
-# 2b. HARD GATE: never wipe a disk that still has a live mapping on it.
-#     If the close above failed (device busy), abort loudly here instead of
-#     running into a "Device void_root already exists" loop later.
-for mapper in /dev/mapper/*; do
-    [ -b "$mapper" ] || continue
-    name=$(basename "$mapper")
-    backing=$(cryptsetup status "$name" 2>/dev/null | sed -n 's/^ *device: *//p')
-    case "$backing" in
-        "$diskInput"*)
-            commandFailure="Mapping '$name' is still active on $diskInput (device busy?). Close it manually or reboot the live session."
-            die
-            ;;
-    esac
-done
+# 2. Our mapping name is a constant, so close it BY NAME.
+#    (Matching by backing device misses orphaned/suspended mappings that
+#    print no usable "device:" line — those are what slip through.)
+if cryptsetup status void_root >/dev/null 2>&1; then
+    echo "Closing LUKS mapping void_root..."
+    cryptsetup close void_root || true
+    udevadm settle
+fi
+
+# Still present (busy/suspended)? Force it.
+if cryptsetup status void_root >/dev/null 2>&1; then
+    echo "Forcing removal of void_root..."
+    dmsetup remove --force --retry void_root || true
+    udevadm settle
+fi
+
+# Stale /dev/mapper node with no kernel dm device behind it.
+if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
+    echo "Removing stale /dev/mapper/void_root node..."
+    rm -f /dev/mapper/void_root
+fi
+
+# 2b. HARD GATE: refuse to touch the disk unless the name is truly free.
+#    This checks reality (kernel dm device + mapper node), not a guess.
+if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
+    commandFailure="void_root still present after cleanup (something holds it busy). Reboot the live session and rerun."
+    die
+fi
 
 # 3. Force the kernel to drop the old table
 for i in {1..5}; do
