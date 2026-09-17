@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # void-install-script general library
 
 RED='\033[0;31m'
@@ -7,11 +7,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # --- 1. FILES AND DIALOG THEME SETUP ---
-_KOID_MISC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+_KOID_MISC_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
     export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
 fi
-KOID_FILES_DIR="$(cd "${_KOID_MISC_DIR}/../files" &>/dev/null && pwd)"
+KOID_FILES_DIR=$(CDPATH= cd -- "${_KOID_MISC_DIR}/../files" && pwd)
 
 # --- Robust Cleanup Function ---
 cleanup_mounts() {
@@ -24,7 +24,7 @@ cleanup_mounts() {
     swapoff -a 2>/dev/null
     
     # Unmount all mounted partitions inside /mnt in reverse order
-    local mounts=$(mount | awk '{print $3}' | grep '^/mnt/' | sort -r)
+    mounts=$(mount | awk '{print $3}' | grep '^/mnt/' | sort -r)
     for m in $mounts; do
         umount -f "$m" 2>/dev/null
     done
@@ -37,7 +37,7 @@ cleanup_mounts() {
 
 # --- Improved Error Handler ---
 die() {
-    local msg="${1:-$commandFailure}"
+    msg="${1:-$commandFailure}"
     
     tput reset 2>/dev/null || clear
     
@@ -46,12 +46,12 @@ die() {
         echo 4 > /proc/sys/kernel/printk
     fi
     
-    echo -e "\n${RED}INSTALLATION ABORTED${NC}"
-    echo -e "${RED}Reason: $msg${NC}\n"
-    echo -e "Attempting to cleanly unmount partitions..."
+    printf "\n%bINSTALLATION ABORTED%b\n" "$RED" "$NC"
+    printf "%bReason: %s%b\n\n" "$RED" "$msg" "$NC"
+    printf "Attempting to cleanly unmount partitions...\n"
     
     cleanup_mounts
-    echo -e "\nYou may now safely exit or reboot."
+    printf "\nYou may now safely exit or reboot.\n"
     exit 1
 }
 
@@ -69,7 +69,7 @@ install() {
 }
 
 system() {
-    chroot /mnt /bin/bash -c "$@" || die "Chroot command failed: $*"
+    chroot /mnt /bin/sh -c "$@" || die "Chroot command failed: $*"
 }
 
 setKernelParam() {
