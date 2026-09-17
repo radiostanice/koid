@@ -53,8 +53,9 @@ for mapper in /dev/mapper/*; do
     [ -b "$mapper" ] || continue
     name=$(basename "$mapper")
     [ "$name" = "control" ] && continue
-    mountpoint -q "$mapper" 2>/dev/null && continue
-    dmsetup remove --force --deferred "$name" 2>/dev/null || true
+    grep -q "^$mapper " /proc/mounts && continue   # still mounted -> hands off
+    fuser -km "$mapper" 2>/dev/null || true
+    cryptsetup close "$name" 2>/dev/null || dmsetup remove "$name" 2>/dev/null || true
 done
 
 return 0
