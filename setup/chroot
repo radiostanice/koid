@@ -23,8 +23,7 @@ exitFunction () {
     rm -rf /tmp/files /tmp/libkoid /tmp/chroot /tmp/60-ukify /tmp/installerOptions
 
     # SAFETY ADDITION: Force the new "Void Linux" entry to the top of the UEFI boot order.
-    # This prevents stubborn motherboards from ignoring the new UKI entry.
-    if [ "$bootloader" = "uki" ] && [ -n "$newEntry" ]; then
+    if [ -n "$newEntry" ]; then
         commandFailure="Setting default boot entry has failed."
         rest=$(efibootmgr | sed -n 's/^BootOrder: //p' | tr ',' '\n' | grep -vx "$newEntry" | paste -sd ',' -)
         efibootmgr --bootorder "${newEntry}${rest:+,$rest}" || die
@@ -213,6 +212,29 @@ EOF
 
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
+
+    # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE + BTRFS ASSISTANT) ---
+    commandFailure="Configuring Btrfs snapshots with Snapper has failed."
+    
+    # Snapper will detect and use the pre-created /.snapshots subvolume
+    snapper -c root create-config / || die
+
+    # Enforce strict retention policies to prevent snapshots from stacking up infinitely
+    sed -i -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
+           -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
+           -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
+           -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
+           -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
+           -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
+           -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
+           -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
+           -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
+           /etc/snapper/configs/root || die
+
+    # Enable snooze for hourly and daily tasks (which triggers snapper timeline and cleanup)
+    # This completely avoids the need for cron or cronie, as snooze executes /etc/cron.{hourly,daily} scripts
+    ln -s /etc/sv/snooze-hourly /var/service || die
+    ln -s /etc/sv/snooze-daily /var/service || die
 
     clear; rootPassword
 fi
