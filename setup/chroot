@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 . "/tmp/libkoid" || { echo "/tmp/libkoid not found."; exit 1; }
 . "/tmp/installerOptions" || { commandFailure="Sourcing installer options failed."; die; }
@@ -32,12 +32,12 @@ exitFunction () {
 }
 
 userPassword() {
-    echo -e "${YELLOW}Set password for user $username: ${NC}"
+    printf "%bSet password for user %s: %b\n" "$YELLOW" "$username" "$NC"
     while ! passwd "$username"; do :; done
 }
 
 rootPassword() {
-    echo -e "${YELLOW}Set your root password: ${NC}"
+    printf "%bSet your root password: %b\n" "$YELLOW" "$NC"
     while ! passwd root; do :; done
     [ -n "$username" ] && userPassword
     exitFunction
@@ -54,7 +54,7 @@ if [ "$secureboot" = "Yes" ]; then
 
     if [ ! -f /var/lib/sbctl/keys/db/db.key ]; then
         sbctl create-keys || die "Failed to create Secure Boot keys."
-        echo -e "${YELLOW}Secure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!${NC}"
+        printf "%bSecure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!%b\n" "$YELLOW" "$NC"
     fi
 
     # Create the kernel hook for automatic signing
@@ -104,7 +104,7 @@ img=$(ls /boot/initramfs-*.img 2>/dev/null | head -n1)
 
 # Booster handles LUKS out-of-the-box via kernel cmdline and generates a compact image.
 # Just verify the image was created and is reasonably sized (usually a few MBs).
-img_size=$(stat -c%s "$img" 2>/dev/null)
+img_size=$(wc -c < "$img")
 [ "$img_size" -gt 1000000 ] || { commandFailure="$img is too small, likely not generated properly by booster."; die; }
 
 # --- UKI NVRAM REGISTRATION ---
@@ -173,7 +173,7 @@ else
 
     kde_lang="${sys_locale%%.*}" 
     
-    [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
+    [ "$kde_lang" = "C" ] || [ "$kde_lang" = "POSIX" ] && kde_lang="en_US"
 
     sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
@@ -196,16 +196,17 @@ else
     snapper -c root create-config / || die
 
     # Enforce strict retention policies to prevent snapshots from stacking up infinitely
-    sed -i -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
-           -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
-           -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
-           -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
-           -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
-           -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
-           -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
-           -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
-           -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
-           /etc/snapper/configs/root || die
+    tmpfile=$(mktemp)
+    sed -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
+        -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
+        -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
+        -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
+        -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
+        -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
+        -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
+        -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
+        -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
+        /etc/snapper/configs/root > "$tmpfile" && mv "$tmpfile" /etc/snapper/configs/root || die
 
     # Tear the temporary bus down again. Kill by PID only: the chroot shares
     # the PID namespace with the live system, so never "pkill dbus-daemon" here.
