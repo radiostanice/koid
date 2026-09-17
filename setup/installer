@@ -44,4 +44,30 @@ dialog --create-rc "$HOME/.dialogrc"
 
 logFile="/tmp/koid-install.log"
 
+dialog --create-rc "$HOME/.dialogrc"
+
+logFile="/tmp/koid-install.log"
+
+# --- Purge leftovers from previous runs ---
+# Stale dm-crypt mappings (like void_root from an aborted attempt) pollute the
+# disk menu and cause kernel I/O errors when anything probes them.
+cleanup_mounts 2>/dev/null
+
+for mapper in /dev/mapper/*; do
+    [ -b "$mapper" ] || continue
+    name=$(basename "$mapper")
+    [ "$name" = "control" ] && continue
+    
+    # Never touch something that is actively mounted (live session safety)
+    if mountpoint -q "$mapper" 2>/dev/null; then continue; fi
+    
+    if cryptsetup status "$name" >/dev/null 2>&1; then
+        echo "Closing stale LUKS mapping: $name"
+        cryptsetup close "$name" 2>/dev/null || dmsetup remove --force "$name" 2>/dev/null || true
+    else
+        dmsetup remove --force "$name" 2>/dev/null || true
+    fi
+done
+udevadm settle 2>/dev/null || true
+
 return 0
