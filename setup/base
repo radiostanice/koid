@@ -18,7 +18,6 @@ fi
 
 commandFailure="Base system installation has failed."
 
-# Added btrfs-progs, cryptsetup, snapper, snooze, and btrfs-assistant (GUI)
 XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound snapper snooze
 
 if [ "$kernel" != "linux" ] ; then
