@@ -17,9 +17,13 @@ fi
 KOID_FILES_DIR="$(pwd)/files"
 
 die() {
-    exec 1>&3 2>&4  # Restore original stdout/stderr
-    printf "\n[ERROR] %s\n" "${1:-${commandFailure}}" >&2
+    exec 1>&3 2>&4
+    # silence kernel console spam (Buffer I/O floods) while cleaning up
+    [ -w /proc/sys/kernel/printk ] && echo 1 > /proc/sys/kernel/printk
+    tput reset 2>/dev/null || clear
     cleanup_mounts
+    [ -w /proc/sys/kernel/printk ] && echo 4 > /proc/sys/kernel/printk
+    printf "\n[ERROR] %s\n" "${1:-$commandFailure}" >&2
     exit 1
 }
 
