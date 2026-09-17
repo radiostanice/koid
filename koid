@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # This script is an "orchestrator" for the other scripts that exist in the "setup" directory.
 
@@ -14,14 +14,17 @@ drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, ha
 
 # --- 1. DISK SELECTION ---
 diskConfig() {
-    local diskArray=() name size
+    tmpmenu=$(mktemp)
+    lsblk -d -o NAME,SIZE -n -e7 > "$tmpmenu"
+    set --
     while read -r name size; do
-        [ -n "$name" ] && diskArray+=("$name" "$size")
-    done < <(lsblk -d -o NAME,SIZE -n -e7)
+        [ -n "$name" ] && set -- "$@" "$name" "$size"
+    done < "$tmpmenu"
+    rm -f "$tmpmenu"
 
-    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Koid Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
+    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Koid Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "$@")
     ret=$?
-    if [ $ret -eq 3 ]; then
+    if [ "$ret" -eq 3 ]; then
         exit 0
     elif [ -n "$diskInput" ]; then
         diskInput="/dev/$diskInput"
@@ -37,11 +40,11 @@ userConfig() {
         username=$(drawDialogBack --nocancel --title "Create User" --inputbox \
             "Enter your username:\n(lowercase letters, digits, '-' and '_';\nmust start with a letter or '_')" 0 0 "${username:-user}")
         ret=$?
-        if [ $ret -eq 1 ]; then exit 0
-        elif [ $ret -eq 3 ]; then diskConfig; return; fi
+        if [ "$ret" -eq 1 ]; then exit 0
+        elif [ "$ret" -eq 3 ]; then diskConfig; return; fi
         
         [ "$username" = "root" ] && username=""
-        if [[ "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        if printf "%s" "$username" | grep -qE '^[a-z_][a-z0-9_-]*$'; then
             break
         fi
         drawDialog --title "Invalid Username" --msgbox "Invalid username: '${username:-<empty>}'.\n\nThe field is pre-filled with a safe default ('user').\nPress OK on it to accept, or type a valid name:\n- starts with a lowercase letter or '_'\n- then lowercase letters, digits, '-' or '_'" 0 0
@@ -51,10 +54,10 @@ userConfig() {
         hostname=$(drawDialogBack --nocancel --title "System Hostname" --inputbox \
             "Enter your system hostname:\n(letters, digits, '-' and '_'; no spaces or dots)" 0 0 "${hostname:-localhost}")
         ret=$?
-        if [ $ret -eq 1 ]; then exit 0
-        elif [ $ret -eq 3 ]; then diskConfig; return; fi
+        if [ "$ret" -eq 1 ]; then exit 0
+        elif [ "$ret" -eq 3 ]; then diskConfig; return; fi
         
-        if [[ "$hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$ ]]; then
+        if printf "%s" "$hostname" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$'; then
             break
         fi
         drawDialog --title "Invalid Hostname" --msgbox "Invalid hostname: '${hostname:-<empty>}'.\n\nUse 1-63 characters: letters, digits, '-' or '_',\nstarting and ending with a letter or digit.\nThe field is pre-filled with the default ('localhost')." 0 0
@@ -64,25 +67,30 @@ userConfig() {
 
 # --- 3. DYNAMIC TIMEZONE ---
 timezoneConfig() {
-    local areas=(Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific)
-    local menu_args=() a
-    for a in "${areas[@]}"; do menu_args+=("$a" ""); done
+    set --
+    for a in Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific; do
+        set -- "$@" "$a" ""
+    done
 
-    local area location
-    area=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your region:" 0 0 0 "${menu_args[@]}")
+    area=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your region:" 0 0 0 "$@")
     ret=$?
-    if [ $ret -eq 3 ]; then userConfig; return; fi
+    if [ "$ret" -eq 3 ]; then userConfig; return; fi
 
     if [ -n "$area" ]; then
-        mapfile -t locations < <(find "/usr/share/zoneinfo/$area" -type f -printf '%P\n' 2>/dev/null | sort)
-        local display_locations=("${locations[@]//_/ }")
-        local loc_args=() l
-        for l in "${display_locations[@]}"; do loc_args+=("$l" ""); done
+        tmpfile=$(mktemp)
+        find "/usr/share/zoneinfo/$area" -type f 2>/dev/null | sed "s|^/usr/share/zoneinfo/$area/||" | sort > "$tmpfile"
+        set --
+        while read -r loc; do
+            [ -n "$loc" ] || continue
+            display_loc=$(printf "%s" "$loc" | tr '_' ' ')
+            set -- "$@" "$display_loc" ""
+        done < "$tmpfile"
+        rm -f "$tmpfile"
         
-        location=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your location:" 0 0 0 "${loc_args[@]}")
+        location=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your location:" 0 0 0 "$@")
         ret=$?
-        if [ $ret -eq 3 ]; then userConfig; return; fi
-        location="${location// /_}"
+        if [ "$ret" -eq 3 ]; then userConfig; return; fi
+        location=$(printf "%s" "$location" | tr ' ' '_')
     fi
 
     if [ -n "$area" ] && [ -n "$location" ]; then
@@ -95,13 +103,17 @@ timezoneConfig() {
 
 # --- 4. DYNAMIC LOCALE ---
 localeConfig() {
-    local localeList tmp=() i localeChoice
-    localeList=$(grep -F '.UTF-8' /etc/default/libc-locales | awk '{print $1}' | sed -e 's/^#//' | sort -u)
-    for i in $localeList; do tmp+=("$i" ""); done
+    tmpfile=$(mktemp)
+    grep -F '.UTF-8' /etc/default/libc-locales | awk '{print $1}' | sed -e 's/^#//' | sort -u > "$tmpfile"
+    set --
+    while read -r i; do
+        set -- "$@" "$i" ""
+    done < "$tmpfile"
+    rm -f "$tmpfile"
     
-    localeChoice=$(drawDialogBack --no-cancel --title "Locale Selection" --menu "Please choose your system locale." 0 0 0 "${tmp[@]}")
+    localeChoice=$(drawDialogBack --no-cancel --title "Locale Selection" --menu "Please choose your system locale." 0 0 0 "$@")
     ret=$?
-    if [ $ret -eq 3 ]; then timezoneConfig; return; fi
+    if [ "$ret" -eq 3 ]; then timezoneConfig; return; fi
     
     locale="LANG=$localeChoice"
     libclocale="$localeChoice UTF-8"
@@ -112,8 +124,8 @@ localeConfig() {
 repositoryConfig() {
     drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 0
     ret=$?
-    if [ $ret -eq 3 ]; then localeConfig; return
-    elif [ $ret -eq 0 ]; then
+    if [ "$ret" -eq 3 ]; then localeConfig; return
+    elif [ "$ret" -eq 0 ]; then
         xmirror
         repository=$(grep -h '^repository=' /etc/xbps.d/*-repository-main.conf 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d '[:space:]')
     else
@@ -128,17 +140,17 @@ repositoryConfig() {
 
 # --- 7.1 KERNEL SECURITY PRESETS ---
 kernelParamsConfig() {
-    local BASE_PARAMS="rw quiet loglevel=3 splash"
+    BASE_PARAMS="rw quiet loglevel=3 splash"
     
-    local KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
-    local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
+    KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
+    KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
 
     preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 0 3 \
     "default" "- Default (Good performance with baseline security)" \
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
     "custom" "- Custom (Edit the parameters manually - Base options included)")
     ret=$?
-    if [ $ret -eq 3 ]; then kernelConfig; return; fi
+    if [ "$ret" -eq 3 ]; then kernelConfig; return; fi
 
     if [ "$preset" = "default" ]; then
         KERN_PARAMS="$KERN_PARAMS_DEFAULT"
@@ -149,15 +161,15 @@ kernelParamsConfig() {
             KERN_PARAMS=$(drawDialogBack --title "Custom Parameters" --inputbox \
                 "Enter custom kernel parameters (space-separated):\n\n*Base boot options (rw, quiet, loglevel) are already included.*" 0 0 "$KERN_PARAMS_DEFAULT")
             ret=$?
-            if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
+            if [ "$ret" -eq 3 ]; then kernelParamsConfig; return; fi
             
-            if [ -z "${KERN_PARAMS// }" ]; then
+            if [ -z "$(printf "%s" "$KERN_PARAMS" | tr -d ' ')" ]; then
                 KERN_PARAMS="$BASE_PARAMS"
                 break
             fi
             
             drawDialog --yesno "You entered:\n\n$KERN_PARAMS\n\nIs this correct?" 0 0
-            if [ $? -eq 0 ]; then break; fi
+            if [ "$?" -eq 0 ]; then break; fi
         done
     fi
     initrdConfig
@@ -179,16 +191,15 @@ gpuConfig() {
     "nvidia-nouveau" "- NVIDIA (Open-source Nouveau)" \
     "none" "- Generic / VM Display (virtio, qxl, vmware)")
     ret=$?
-    if [ $ret -eq 3 ]; then initrdConfig; return; fi
+    if [ "$ret" -eq 3 ]; then initrdConfig; return; fi
     
     if [ "$graphics" = "auto" ]; then
-        local gpu_info
         gpu_info=$(lspci -nn | grep -Ei "vga|3d|display")
-        if echo "$gpu_info" | grep -qi "nvidia"; then
+        if printf "%s" "$gpu_info" | grep -qi "nvidia"; then
             graphics="nvidia"
-        elif echo "$gpu_info" | grep -Eiq "radeon|amd|ati"; then
+        elif printf "%s" "$gpu_info" | grep -Eiq "radeon|amd|ati"; then
             graphics="amd"
-        elif echo "$gpu_info" | grep -qi "intel"; then
+        elif printf "%s" "$gpu_info" | grep -qi "intel"; then
             graphics="intel"
         else
             graphics="none"
@@ -201,32 +212,31 @@ gpuConfig() {
 securebootConfig() {
     drawDialogBack --title "Secure Boot" --yesno "Do you want to generate Secure Boot keys and sign the kernel?\n\nThis installs 'sbctl' and adds a kernel hook to automatically sign kernels on updates." 0 0
     ret=$?
-    if [ $ret -eq 3 ]; then gpuConfig; return
-    elif [ $ret -eq 0 ]; then secureboot="Yes"
+    if [ "$ret" -eq 3 ]; then gpuConfig; return
+    elif [ "$ret" -eq 0 ]; then secureboot="Yes"
     else secureboot="No"; fi
     appsConfig
 }
 
 # --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
-    local apps_list=(
-        "octoxbps" "OctoXBPS package manager" on
-        "kate" "KDE advanced text editor" on
-        "oxygen" "KDE theme - Recommended" on
-        "spectacle" "KDE screenshot capture utility" on
-        "chromium" "Chromium web browser" off
-        "firefox" "Firefox web browser" off
-        "flatpak" "Flatpak package management" off
-        "htop" "System monitor" off
-        "blueman" "Bluetooth GUI manager" off
+    set -- \
+        "octoxbps" "OctoXBPS package manager" on \
+        "kate" "KDE advanced text editor" on \
+        "oxygen" "KDE theme - Recommended" on \
+        "spectacle" "KDE screenshot capture utility" on \
+        "chromium" "Chromium web browser" off \
+        "firefox" "Firefox web browser" off \
+        "flatpak" "Flatpak package management" off \
+        "htop" "System monitor" off \
+        "blueman" "Bluetooth GUI manager" off \
         "cups" "CUPS printing support" off
-    )
 
-    selected=$(drawDialogBack --no-cancel --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "${apps_list[@]}")
+    selected=$(drawDialogBack --no-cancel --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "$@")
     ret=$?
-    if [ $ret -eq 3 ]; then securebootConfig; return; fi
+    if [ "$ret" -eq 3 ]; then securebootConfig; return; fi
     
-    extra_packages=$(echo "$selected" | tr -d '"')
+    extra_packages=$(printf "%s" "$selected" | tr -d '"')
 
     if [ -n "$extra_packages" ]; then
         drawDialog --title "Selected Packages" --msgbox "The following packages will be installed:\n\n$extra_packages" 0 0
@@ -238,50 +248,54 @@ appsConfig() {
 
 # --- 12. CONFIRMATION ---
 confirm() {
-    local settings="Target disk: $diskInput (WILL BE WIPED)\n"
-    settings+="Hostname: $hostname\n"
-    settings+="User: $username\n"
-    settings+="Timezone: $timezone\n"
-    settings+="Locale: ${locale#LANG=}\n"
-    settings+="GPU Driver: $graphics\n"
-    [ "$repository" != "default" ] && settings+="Repo: $repository\n"
-    [ "$secureboot" = "Yes" ] && settings+="Secure Boot: Enabled\n"
-    [ -n "$KERN_PARAMS" ] && settings+="Kernel Params: $KERN_PARAMS\n"
-    [ -n "$extra_packages" ] && settings+="Extra Apps: $extra_packages\n"
+    settings="Target disk: $diskInput (WILL BE WIPED)\n"
+    settings="$settings""Hostname: $hostname\n"
+    settings="$settings""User: $username\n"
+    settings="$settings""Timezone: $timezone\n"
+    settings="$settings""Locale: ${locale#LANG=}\n"
+    settings="$settings""GPU Driver: $graphics\n"
+    [ "$repository" != "default" ] && settings="$settings""Repo: $repository\n"
+    [ "$secureboot" = "Yes" ] && settings="$settings""Secure Boot: Enabled\n"
+    [ -n "$KERN_PARAMS" ] && settings="$settings""Kernel Params: $KERN_PARAMS\n"
+    [ -n "$extra_packages" ] && settings="$settings""Extra Apps: $extra_packages\n"
     
     drawDialogBack --yes-label "Install" --no-label "Exit" --title "Installation Overview" --yesno "Selecting 'Install' will DESTROY ALL DATA on $diskInput and proceed with these options:\n\n$settings" 0 0
     ret=$?
-    if [ $ret -eq 3 ]; then appsConfig; return
-    elif [ $ret -eq 0 ]; then _install
+    if [ "$ret" -eq 3 ]; then appsConfig; return
+    elif [ "$ret" -eq 0 ]; then _install
     else exit 0; fi
 }
 
 # --- INSTALLATION EXECUTION ---
 _install() {
-    exec 3>&1 4>&2
-    exec > >(tee -a "$logFile") 2>&1
     {
-        echo "koid-install log"
-        echo "date: $(date)"
-        echo "commit: $(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-        echo "environment: ${libc} ${ARCH} $(uname -r)"
-        echo ""
-        echo "user settings:"
-        echo -e "$settings"
-        echo ""
+        printf "koid-install log\n"
+        printf "date: %s\n" "$(date)"
+        printf "commit: %s\n" "$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+        printf "environment: %s %s %s\n" "$libc" "$ARCH" "$(uname -r)"
+        printf "\n"
+        printf "user settings:\n"
+        printf "%b\n" "$settings"
+        printf "\n"
     } >> "$logFile"
     
-echo "Starting installation..."
-. "$(pwd)"/setup/disk
+    FIFO=$(mktemp -u)
+    mkfifo "$FIFO"
+    tee -a "$logFile" < "$FIFO" &
+    TEEPID=$!
+    exec >"$FIFO" 2>&1
 
-mkdir -p /mnt/tmp
+    printf "Starting installation...\n"
+    . "$(pwd)"/setup/disk
 
-cat <<EOF > /mnt/tmp/installerOptions
-timezone=${timezone@Q}
-diskInput=${diskInput@Q}
-username=${username@Q}
-secureboot=${secureboot@Q}
-locale=${locale@Q}
+    mkdir -p /mnt/tmp
+
+    cat <<EOF > /mnt/tmp/installerOptions
+timezone='$timezone'
+diskInput='$diskInput'
+username='$username'
+secureboot='$secureboot'
+locale='$locale'
 EOF
     . "$(pwd)"/setup/base
     . "$(pwd)"/setup/desktop
@@ -291,15 +305,17 @@ EOF
     cp -f "$(pwd)"/misc/libkoid /mnt/tmp/libkoid || die
     cp -f "$(pwd)"/setup/chroot /mnt/tmp/chroot || die
     cp -f "$(pwd)"/misc/60-ukify /mnt/tmp/60-ukify || die
-    cp -r "$(pwd)"/files /mnt/tmp/files || die
+    cp -R "$(pwd)"/files /mnt/tmp/files || die
     
-    system "/bin/bash /tmp/chroot"
+    system "/bin/sh /tmp/chroot"
     clear
     system "xbps-remove -RyO"
 
     system "find /var/cache/xbps -name '*.xbps' -delete 2>/dev/null || true"
 
     exec 1>&3 2>&4
+    wait "$TEEPID"
+    rm -f "$FIFO"
     clear
 
     rm -f "$logFile"
