@@ -1,0 +1,8 @@
+UUID=@ESP_UUID@ /boot/efi vfat rw,nosuid,nodev,noexec,umask=0022,flush 0 2
+UUID=@ROOT_UUID@ / btrfs subvol=@,compress=zstd:1,discard=async,nosuid,nodev 0 0
+UUID=@ROOT_UUID@ /home btrfs subvol=@home,compress=zstd:1,discard=async,nosuid,nodev 0 0
+UUID=@ROOT_UUID@ /var/log btrfs subvol=@log,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0
+UUID=@ROOT_UUID@ /var/cache btrfs subvol=@cache,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0
+UUID=@ROOT_UUID@ /var/tmp btrfs subvol=@tmp,compress=zstd:1,discard=async,nosuid,nodev,noexec 0 0
+UUID=@ROOT_UUID@ /.snapshots btrfs subvol=@snapshots,compress=zstd:1,discard=async 0 0
+tmpfs /tmp tmpfs defaults,nosuid,nodev,noexec,mode=1777 0 0
