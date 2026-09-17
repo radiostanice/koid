@@ -12,8 +12,6 @@ while IFS= read -r mount_point; do
 done < <(lsblk -ln -o MOUNTPOINT "$diskInput" 2>/dev/null | sort -r)
 
 # 2. Close LUKS containers / remove stale dm mappings backed by this disk.
-#    Ask cryptsetup itself which device each mapping wraps instead of guessing
-#    with lsblk PKNAME greps.
 for mapper in /dev/mapper/*; do
     [ -b "$mapper" ] || continue
     name=$(basename "$mapper")
@@ -27,7 +25,7 @@ for mapper in /dev/mapper/*; do
 done
 udevadm settle
 
-# 3. Now that nothing holds the disk, force the kernel to drop the old table
+# 3. Force the kernel to drop the old table
 for i in {1..5}; do
     blockdev --rereadpt "$diskInput" 2>/dev/null && break
     echo "Waiting for $diskInput to be released... attempt $i"
@@ -42,7 +40,7 @@ for part in "${diskInput}"*; do
     [ -b "$part" ] && wipefs --all --force "$part" 2>/dev/null || true
 done
 
-# 5. Zap GPT partition table (clears both primary and backup headers)
+# 5. Zap GPT partition table
 if command -v sgdisk >/dev/null 2>&1; then
     sgdisk --zap-all "$diskInput" 2>/dev/null || true
 else
@@ -75,9 +73,8 @@ commandFailure="Writing partition table has failed."
     echo ""           # Default first sector
     echo ""           # Use all remaining space
     echo "w"          # Write
-) | fdisk -w always "$diskInput" || { commandFailure="Writing partition table failed." ; die ; }
+) | fdisk -w always "$diskInput" || die
 
-# Force kernel to recognize new partitions immediately
 partx -u "$diskInput" 2>/dev/null || true
 udevadm settle
 
@@ -98,7 +95,6 @@ for i in {1..10}; do
     sleep 1
 done
 
-# Verify partitions exist
 [ -b "$esp" ] || { commandFailure="ESP partition $esp does not exist." ; die ; }
 [ -b "$root" ] || { commandFailure="Root partition $root does not exist." ; die ; }
 
@@ -112,42 +108,58 @@ fi
 commandFailure="Formatting ESP has failed."
 mkfs.vfat -F 32 "$esp" || die
 
-# --- ENCRYPTION ---
-if [ "$encryption" == "Yes" ]; then
-    commandFailure="Encrypting partition has failed."
-    echo -e "${YELLOW}Enter your encryption passphrase:${NC}"
+# --- ENCRYPTION (LUKS2 ONLY) ---
+commandFailure="Encrypting partition has failed."
+echo -e "${YELLOW}Enter your encryption passphrase:${NC}"
 
-    # Detect if disk is an SSD (rotational == 0)
-    is_ssd=0
-    base_disk=$(basename "$diskInput")
-    if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
-        if [ "$(cat /sys/block/$base_disk/queue/rotational)" -eq 0 ]; then
-            is_ssd=1
-        fi
+# Detect if disk is an SSD (rotational == 0)
+is_ssd=0
+base_disk=$(basename "$diskInput")
+if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
+    if [ "$(cat /sys/block/$base_disk/queue/rotational)" -eq 0 ]; then
+        is_ssd=1
     fi
-
-    local crypt_options=("--type" "luks2" "--batch-mode" "--verify-passphrase" "--pbkdf" "argon2id")
-    if [ "$is_ssd" -eq 1 ]; then
-        crypt_options+=("--allow-discards")
-    fi
-
-    while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
-
-    echo -e "${YELLOW}Opening encrypted partition...${NC}"
-    while ! cryptsetup luksOpen "$root" void_root; do :; done
-
-    format_target="/dev/mapper/void_root"
-else
-    format_target="$root"
 fi
 
-# --- FORMAT ROOT ---
-commandFailure="Formatting root as ext4 has failed."
-mkfs.ext4 -F "$format_target" || die
+# local is removed because this file is sourced at top-level scope
+crypt_options=("--type" "luks2" "--batch-mode" "--verify-passphrase" "--pbkdf" "argon2id")
+if [ "$is_ssd" -eq 1 ]; then
+    crypt_options+=("--allow-discards")
+fi
 
-# --- MOUNT ---
-commandFailure="Mounting partitions has failed."
-mount "$format_target" /mnt || die
+while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
+
+echo -e "${YELLOW}Opening encrypted partition...${NC}"
+while ! cryptsetup luksOpen "$root" void_root; do :; done
+
+format_target="/dev/mapper/void_root"
+
+# --- FORMAT ROOT (BTRFS ONLY) ---
+commandFailure="Formatting root as Btrfs has failed."
+mkfs.btrfs -f "$format_target" || die
+
+# --- MOUNT ROOT & CREATE SUBVOLUMES ---
+commandFailure="Mounting Btrfs root has failed."
+# Mount the top level to create subvolumes
+mount -o compress=zstd:1 "$format_target" /mnt || die
+
+btrfs subvolume create /mnt/@ || die
+btrfs subvolume create /mnt/@home || die
+btrfs subvolume create /mnt/@log || die
+btrfs subvolume create /mnt/@cache || die
+btrfs subvolume create /mnt/@tmp || die
+
+# Unmount to remount subvolumes properly
+umount /mnt || die
+
+# --- MOUNT SUBVOLUMES ---
+mount -o subvol=@,compress=zstd:1,discard=async "$format_target" /mnt || die
+
+mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp || die
+mount -o subvol=@home,compress=zstd:1,discard=async "$format_target" /mnt/home || die
+mount -o subvol=@log,compress=zstd:1,discard=async "$format_target" /mnt/var/log || die
+mount -o subvol=@cache,compress=zstd:1,discard=async "$format_target" /mnt/var/cache || die
+mount -o subvol=@tmp,compress=zstd:1,discard=async "$format_target" /mnt/var/tmp || die
 
 mkdir -p /mnt/boot/efi || die
 mount "$esp" /mnt/boot/efi || die
