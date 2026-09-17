@@ -129,12 +129,11 @@ commandFailure="Post-installation configuration failed (after NVRAM registration
 
 ln -sf /usr/share/zoneinfo/"$timezone" /etc/localtime || die
 
-if [ "$su" = "doas" ]; then
-    cp /tmp/files/doas.conf /etc/doas.conf || die
-    chown root:root /etc/doas.conf || die
-    chmod 0400 /etc/doas.conf || die
-    ln -sf /usr/bin/doas /usr/bin/sudo || die
-fi
+# Doas setup 
+cp /tmp/files/doas.conf /etc/doas.conf || die
+chown root:root /etc/doas.conf || die
+chmod 0400 /etc/doas.conf || die
+ln -sf /usr/bin/doas /usr/bin/sudo || die
 
 # Extract just the locale string (e.g., "en_US.UTF-8") from "LANG=en_US.UTF-8"
 sys_locale="${locale#LANG=}"
@@ -145,14 +144,6 @@ if [ -z "$username" ]; then
 else
     useradd "$username" -m -d /home/"$username" || die
     usermod -aG audio,video,kvm,wheel "$username" || die
-
-    if [ "$su" = "sudo" ]; then
-        mkdir -p /etc/sudoers.d || die
-        chmod 750 /etc/sudoers.d || die
-        echo "$username ALL=(ALL:ALL) ALL" > /etc/sudoers.d/"$username" || die
-        chmod 440 /etc/sudoers.d/"$username" || die
-        visudo -cf /etc/sudoers.d/"$username" || die
-    fi
 
     sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bash_profile > /home/"$username"/.bash_profile || die
     chown "$username":"$username" /home/"$username"/.bash_profile || die
@@ -206,7 +197,7 @@ EOF
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
 
-    # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE + BTRFS ASSISTANT) ---
+    # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE) ---
     commandFailure="Configuring Btrfs snapshots with Snapper has failed."
     
     # Snapper will detect and use the pre-created /.snapshots subvolume
