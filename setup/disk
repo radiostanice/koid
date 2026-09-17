@@ -11,8 +11,14 @@ cleanup_mounts
 #     If it still trips, print the actual offenders instead of guessing.
 if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
     echo "FATAL: void_root is STILL busy or mapped. Offending processes/mounts:"
-    lsof +D /mnt 2>/dev/null || true
-    mount | grep /mnt || true
+    
+    # Print device-mapper status
+    dmsetup info -c void_root 2>/dev/null || true
+    # Print processes holding the block device open
+    fuser -vm /dev/mapper/void_root 2>/dev/null || true
+    # Print any remaining mounted device-mapper devices
+    awk '$1 ~ /^\/dev\/mapper\// {print $1, $2}' /proc/mounts || true
+    
     commandFailure="LUKS device void_root could not be unmapped."
     die
 fi
