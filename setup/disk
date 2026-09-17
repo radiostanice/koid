@@ -1,54 +1,45 @@
 #!/bin/sh
-# setup/disk - Partitions the disk, sets up LUKS, Btrfs subvolumes, and formats.
-
 echo "Running setup/disk..."
 
 # --- CLEANUP PREVIOUS INSTALLATION ---
 echo "Cleaning previous installation..."
 
-# 1a. Kill processes living in /mnt, INCLUDING holders of lazy-detached
-#     mounts (readlink shows those as "... (deleted)") - the invisible Open=1.
-for pdir in /proc/[0-9]*; do
-    pid=${pdir#/proc/}
-    [ "$pid" = "$$" ] && continue
-    for what in root cwd; do
-        p=$(readlink "$pdir/$what" 2>/dev/null) || continue
-        case "$p" in
-            /mnt|/mnt/*|"/mnt (deleted)"|/mnt/*" (deleted)")
-                kill -9 "$pid" 2>/dev/null || true ;;
-        esac
-    done
+# 1. Unmount everything under /mnt, deepest mounts first.
+#    /proc/mounts on purpose: immune to findmnt flag-compat issues.
+awk '$2 ~ /^\/mnt(\/.*)?$/ {print $2}' /proc/mounts | sort -r | while IFS= read -r mount_point; do
+    [ -z "$mount_point" ] && continue
+    echo "Unmounting $mount_point..."
+    umount -f -l "$mount_point" 2>/dev/null || true
 done
+umount -R /mnt 2>/dev/null || true
+udevadm settle
 
-# 1b. Hard-unmount everything under /mnt, deepest first. NO lazy unmount.
-while :; do
-    m=$(awk '$2 ~ /^\/mnt\// {print $2}' /proc/mounts | sort -r | head -n 1)
-    [ -z "$m" ] && break
-    umount -f "$m" 2>/dev/null || break
-done
-umount -f /mnt 2>/dev/null || true
-sync
-
-# 2. Close mappings backed by this disk (your working bash logic, POSIX-ified).
-#    Force-close as fallback, exactly like the version that worked.
-if [ -e /dev/mapper/void_root ]; then
-    fuser -km /dev/mapper/void_root 2>/dev/null || true
-    cryptsetup close void_root 2>/dev/null || dmsetup remove --force void_root 2>/dev/null || true
+# 2. Our mapping name is a constant, so close it BY NAME.
+if cryptsetup status void_root >/dev/null 2>&1; then
+    echo "Closing LUKS mapping void_root..."
+    cryptsetup close void_root || true
+    udevadm settle
 fi
-for mapper in /dev/mapper/*; do
-    [ -b "$mapper" ] || continue
-    name=$(basename "$mapper")
-    [ "$name" = "control" ] && continue
-    backing=$(cryptsetup status "$name" 2>/dev/null | sed -n 's/^ *device: *//p')
-    case "$backing" in
-        "$diskInput"*)
-            echo "Closing LUKS mapping $name..."
-            fuser -km "$mapper" 2>/dev/null || true
-            cryptsetup close "$name" 2>/dev/null || dmsetup remove --force "$name" 2>/dev/null || true
-            ;;
-    esac
-done
-udevadm settle --timeout=10 2>/dev/null || true
+
+# Still present (busy/suspended)? Force it. (No --retry: fail fast,
+# the gate below reports it cleanly instead of spamming ioctls.)
+if cryptsetup status void_root >/dev/null 2>&1; then
+    echo "Forcing removal of void_root..."
+    dmsetup remove --force void_root || true
+    udevadm settle
+fi
+
+# Stale /dev/mapper node with no kernel dm device behind it.
+if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
+    echo "Removing stale /dev/mapper/void_root node..."
+    rm -f /dev/mapper/void_root
+fi
+
+# 2b. HARD GATE: refuse to touch the disk unless the name is truly free.
+if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
+    commandFailure="void_root still present after cleanup (something holds it busy). Reboot the live session and rerun."
+    die
+fi
 
 # 3. Force the kernel to drop the old table
 i=1
@@ -59,11 +50,11 @@ while [ "$i" -le 5 ]; do
     i=$((i + 1))
 done
 partx -u "$diskInput" 2>/dev/null || true
-udevadm settle --timeout=10 2>/dev/null || true
+udevadm settle
 
 # 4. Wipe filesystem signatures from the disk and all its partitions
 wipefs --all --force "$diskInput" 2>/dev/null || true
-for part in "$diskInput"*; do
+for part in "${diskInput}"*; do
     [ -b "$part" ] && wipefs --all --force "$part" 2>/dev/null || true
 done
 
@@ -149,27 +140,28 @@ if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
     fi
 fi
 
+# local is removed because this file is sourced at top-level scope
 crypt_options="--type luks2 --batch-mode --verify-passphrase --pbkdf argon2id"
 if [ "$is_ssd" -eq 1 ]; then
     crypt_options="$crypt_options --allow-discards"
 fi
 
-# shellcheck disable=SC2086
-while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
+    # shellcheck disable=SC2086
+    while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
 
-printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
-# Bounded retries: an infinite loop here spins forever on non-passphrase
-# errors like "Device void_root already exists."
-for attempt in 1 2 3; do
-    cryptsetup luksOpen "$root" void_root && break
-    if [ "$attempt" -eq 3 ]; then
-        commandFailure="Opening the LUKS container failed."
-        die
-    fi
-    echo "Failed to open LUKS container, retrying ($attempt/3)..."
-done
+    printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
+    # Bounded retries: an infinite loop here spins forever on non-passphrase
+    # errors like "Device void_root already exists."
+    for attempt in 1 2 3; do
+        cryptsetup luksOpen "$root" void_root && break
+        if [ "$attempt" -eq 3 ]; then
+            commandFailure="Opening the LUKS container failed."
+            die
+        fi
+        echo "Failed to open LUKS container, retrying ($attempt/3)..."
+    done
 
-format_target="/dev/mapper/void_root"
+    format_target="/dev/mapper/void_root"
 
 # --- FORMAT ROOT (BTRFS ONLY) ---
 commandFailure="Formatting root as Btrfs has failed."
@@ -177,6 +169,7 @@ mkfs.btrfs -f "$format_target" || die
 
 # --- MOUNT ROOT & CREATE SUBVOLUMES ---
 commandFailure="Mounting Btrfs root has failed."
+# Mount the top level to create subvolumes
 mount -o compress=zstd:1 "$format_target" /mnt || die
 
 btrfs subvolume create /mnt/@ || die
