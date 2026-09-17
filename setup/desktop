@@ -71,6 +71,8 @@ install kinfocenter aha fwupd lm_sensors clinfo glxinfo Vulkan-Tools wayland-uti
 install dolphin
 # terminal
 install konsole
+# archive manager 
+install ark
 
 # --- EXTRA PACKAGES SETUP ---
 if echo "$extra_packages" | grep -qw "oxygen"; then
