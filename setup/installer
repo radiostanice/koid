@@ -48,14 +48,4 @@ dialog --create-rc "$HOME/.dialogrc"
 
 logFile="/tmp/koid-install.log"
 
-# --- Purge leftovers (no I/O, cannot hang) ---
-for mapper in /dev/mapper/*; do
-    [ -b "$mapper" ] || continue
-    name=$(basename "$mapper")
-    [ "$name" = "control" ] && continue
-    grep -q "^$mapper " /proc/mounts && continue   # still mounted -> hands off
-    fuser -km "$mapper" 2>/dev/null || true
-    cryptsetup close "$name" 2>/dev/null || dmsetup remove "$name" 2>/dev/null || true
-done
-
 return 0
