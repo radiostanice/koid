@@ -123,26 +123,6 @@ repositoryConfig() {
     
     [ "$libc" = "glibc" ] && ARCH="x86_64"
     [ "$libc" = "musl" ] && ARCH="x86_64-musl"
-    suConfig
-}
-
-# --- 6. PRIVILEGE ESCALATION CHOICE ---
-suConfig() {
-    su=$(drawDialogBack --no-cancel --title "Privilege Escalation" --menu "Choose your privilege escalation tool:" 0 0 2 \
-    "sudo" "- Standard, widely used privilege escalation" \
-    "doas" "- Lightweight, secure alternative (OpenBSD style)")
-    ret=$?
-    if [ $ret -eq 3 ]; then repositoryConfig; return; fi
-    kernelConfig
-}
-
-# --- 7. KERNEL SELECTION ---
-kernelConfig() {
-    kernel=$(drawDialogBack --no-cancel --title "Kernel Selection" --menu "Select your Linux kernel:" 0 0 2 \
-    "linux-lts" "- Long Term Support kernel (recommended for stability)" \
-    "linux" "- Standard latest stable kernel")
-    ret=$?
-    if [ $ret -eq 3 ]; then suConfig; return; fi
     kernelParamsConfig
 }
 
@@ -275,27 +255,14 @@ appsConfig() {
 # --- 12. CONFIRMATION ---
 confirm() {
     local settings="Target disk: $diskInput (WILL BE WIPED)\n"
-    settings+="Filesystem: Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n"
-    settings+="Encryption: LUKS2 (argon2id)\n"
-    settings+="Bootloader: UKI (No GRUB)\n"
-    settings+="Kernel: $kernel\n"
-    if [ -n "$KERN_PARAMS" ]; then
-        settings+="Kernel Params: $KERN_PARAMS\n"
-    else
-        settings+="Kernel Params: None\n"
-    fi
-    settings+="Initramfs: $initrd\n"
-    settings+="Desktop: KDE Plasma (Wayland only)\n"
-    settings+="Audio: PipeWire\n"
-    settings+="Network: NetworkManager (MAC Randomization enabled)\n"
     settings+="Hostname: $hostname\n"
     settings+="User: $username\n"
-    settings+="Privilege Escalation: $su\n"
     settings+="Timezone: $timezone\n"
     settings+="Locale: ${locale#LANG=}\n"
-    settings+="Repo: $repository\n"
     settings+="GPU Driver: $graphics\n"
-    settings+="Secure Boot: $secureboot\n"
+    [ "$repository" != "default" ] && settings+="Repo: $repository\n"
+    [ "$secureboot" = "Yes" ] && settings+="Secure Boot: Enabled\n"
+    [ -n "$KERN_PARAMS" ] && settings+="Kernel Params: $KERN_PARAMS\n"
     [ -n "$extra_packages" ] && settings+="Extra Apps: $extra_packages\n"
     
     drawDialogBack --yes-label "Install" --no-label "Exit" --title "Installation Overview" --yesno "Selecting 'Install' will DESTROY ALL DATA on $diskInput and proceed with these options:\n\n$settings" 0 0
@@ -320,27 +287,18 @@ _install() {
         echo ""
     } >> "$logFile"
     
-    echo "Starting installation..."
-    . "$(pwd)"/setup/disk
-    
-    mkdir -p /mnt/tmp
-    
-    cat <<EOF > /mnt/tmp/installerOptions
-bootloader=uki
-su=${su@Q}
+echo "Starting installation..."
+. "$(pwd)"/setup/disk
+
+mkdir -p /mnt/tmp
+
+cat <<EOF > /mnt/tmp/installerOptions
 timezone=${timezone@Q}
-encryption="Yes"
 diskInput=${diskInput@Q}
 username=${username@Q}
-desktop=kde
-root=${root@Q}
-initrd=${initrd@Q}
-graphics=${graphics@Q}
-kernel=${kernel@Q}
 secureboot=${secureboot@Q}
 locale=${locale@Q}
 EOF
-    
     . "$(pwd)"/setup/base
     . "$(pwd)"/setup/desktop
     
