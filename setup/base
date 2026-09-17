@@ -1,33 +1,19 @@
 #!/bin/bash
 
 commandFailure="Copying XBPS keys has failed."
-
-mkdir -p /mnt/var/db/xbps/keys || die
+mkdir -p /mnt/var/db/xbps/Keys || die
 find /var/db/xbps/keys -maxdepth 1 -type f -exec cp {} /mnt/var/db/xbps/keys/ \; || die
 
 # --- PRE-INSTALL IGNOREPKG CONFIGURATION ---
+# Hardcoded ignores for the standard kernel and sudo
 mkdir -p /mnt/etc/xbps.d
-
-if [ "$su" != "sudo" ]; then
-    echo "ignorepkg=sudo" >> /mnt/etc/xbps.d/ignore.conf || die
-fi
-
-if [ "$kernel" != "linux" ] ; then
-    echo "ignorepkg=linux" >> /mnt/etc/xbps.d/ignore.conf || die
-fi
+echo "ignorepkg=sudo" >> /mnt/etc/xbps.d/ignore.conf || die
+echo "ignorepkg=linux" >> /mnt/etc/xbps.d/ignore.conf || die
 
 commandFailure="Base system installation has failed."
 
-XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound snapper snooze
-
-if [ "$kernel" != "linux" ] ; then
-    install "$kernel"
-    system "xbps-remove -RyO linux"
-fi
-
-if [ "$su" = "doas" ]; then
-    install opendoas
-fi
+# Cleaned install list: btrfs-assistant removed; linux-lts and opendoas explicitly added
+XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound snapper snooze linux-lts opendoas
 
 # Make nano the default editor instead of vi
 command install -Dm644 "$KOID_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || die
@@ -36,16 +22,11 @@ command install -Dm644 "$KOID_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || d
 commandFailure="UKI/Initramfs package installation has failed."
 install efibootmgr ukify systemd-boot-efistub booster plymouth
 
-# linux-base pulls dracut, which owns the 20-initramfs slot by default.
-# We must explicitly switch to booster so it takes over.
-system "xbps-alternatives -s booster" || {
-    system "ln -sf /usr/libexec/booster/kernel-hook-postinst /etc/kernel.d/post-install/20-initramfs" || die "Failed to switch to booster"
-    system "ln -sf /usr/libexec/booster/kernel-hook-postrm /etc/kernel.d/post-remove/20-initramfs" || die "Failed to switch to booster"
-}
+# Unbloat: Removed the manual symlink fallback. xbps-alternatives handles it natively.
+system "xbps-alternatives -s booster" || die "Failed to switch to booster"
 
 # --- Plymouth Configuration ---
 commandFailure="Configuring Plymouth theme has failed."
-# Set default plymouth theme (spinner is usually included, fallback to text)
 system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
 system "mkdir -p /etc"
 system "printf 'enable_plymouth: true\n' >> /etc/booster.yaml" || die
