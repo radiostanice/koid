@@ -35,13 +35,21 @@ command install -Dm644 "$KOID_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || d
 
 # UKI & Initramfs Dependencies
 commandFailure="UKI/Initramfs package installation has failed."
-install efibootmgr ukify systemd-boot-efistub "$initrd"
+install efibootmgr ukify systemd-boot-efistub booster plymouth
 
 # linux-base pulls dracut, which owns the 20-initramfs slot by default.
-# We must explicitly switch to tinyramfs so it takes over.
-if [ "$initrd" = "tinyramfs" ]; then
-    system "xbps-alternatives -s tinyramfs" || die "Failed to switch alternatives to tinyramfs"
-fi
+# We must explicitly switch to booster so it takes over.
+system "xbps-alternatives -s booster" || {
+    system "ln -sf /usr/libexec/booster/kernel-hook-postinst /etc/kernel.d/post-install/20-initramfs" || die "Failed to switch to booster"
+    system "ln -sf /usr/libexec/booster/kernel-hook-postrm /etc/kernel.d/post-remove/20-initramfs" || die "Failed to switch to booster"
+}
+
+# --- Plymouth Configuration ---
+commandFailure="Configuring Plymouth theme has failed."
+# Set default plymouth theme (spinner is usually included, fallback to text)
+system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
+system "mkdir -p /etc"
+system "printf 'enable_plymouth: true\n' >> /etc/booster.yaml" || die
 
 if [ "$repository" != "https://repo-default.voidlinux.org/current" ] && [ "$repository" != "https://repo-default.voidlinux.org/current/musl" ]; then
     xmirror -s "$repository" -r /mnt || { commandFailure="Repository configuration failed."; die ; }
@@ -116,37 +124,6 @@ if [ -n "$extra_packages" ]; then
     commandFailure="Additional packages installation has failed."
     # shellcheck disable=SC2086
     install $extra_packages
-fi
-
-# --- TINYRAMFS & LUKS CONFIGURATION ---
-if [ "$initrd" = "tinyramfs" ]; then
-    commandFailure="Configuring tinyramfs has failed."
-    mkdir -p /mnt/etc/tinyramfs || die
-    CONFIG_FILE="/mnt/etc/tinyramfs/config"
-    
-    # Detect if disk is an SSD (to enable luks_discard)
-    is_ssd=0
-    base_disk=$(basename "$diskInput")
-    if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
-        if [ "$(cat /sys/block/$base_disk/queue/rotational)" -eq 0 ]; then
-            is_ssd=1
-        fi
-    fi
-
-    luks_uuid=$(blkid -o value -s UUID "$root")
-    [ -n "$luks_uuid" ] || die "Failed to get LUKS UUID for $root."
-
-    # Generate config with LUKS support
-    cat <<EOF > "$CONFIG_FILE"
-hooks="eudev,luks"
-luks_root=UUID=$luks_uuid
-luks_name=void_root
-root=/dev/mapper/void_root
-root_type=btrfs
-EOF
-    if [ "$is_ssd" -eq 1 ]; then
-        echo 'luks_discard=yes' >> "$CONFIG_FILE"
-    fi
 fi
 
 return 0
