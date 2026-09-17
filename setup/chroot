@@ -188,7 +188,11 @@ else
     mkdir -p /run/dbus || die
     tmp_dbus_pid=$(dbus-daemon --system --fork --print-pid) || die
 
-    # Snapper will detect and use the pre-created /.snapshots subvolume
+    # /.snapshots must NOT exist yet: snapper creates the subvolume itself,
+    # nested inside the root subvolume (openSUSE-style layout).
+    rmdir /.snapshots 2>/dev/null || true   # drop an empty leftover mount-point dir
+    [ -e /.snapshots ] && { commandFailure="/.snapshots already exists; snapper cannot create it."; die; }
+
     snapper -c root create-config / || die
 
     # Enforce strict retention policies to prevent snapshots from stacking up infinitely
