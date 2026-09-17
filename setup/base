@@ -32,7 +32,7 @@ if [ "$su" = "doas" ]; then
 fi
 
 # Make nano the default editor instead of vi
-command install -Dm644 "$VISS_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || die
+command install -Dm644 "$KOID_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || die
 
 # UKI & Initramfs Dependencies
 commandFailure="UKI/Initramfs package installation has failed."
@@ -102,12 +102,12 @@ commandFailure="Configuring NetworkManager hardening failed."
 mkdir -p /mnt/etc/NetworkManager/conf.d || die
 
 # Install the combined hardening config (MAC randomization + dns=none)
-command install -Dm644 "$VISS_FILES_DIR/00-nm-setup.conf" \
+command install -Dm644 "$KOID_FILES_DIR/00-nm-setup.conf" \
     /mnt/etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
 # --- NTS SECURE TIME SYNC ---
 commandFailure="Configuring Chrony for NTS has failed."
-command install -Dm644 "$VISS_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
+command install -Dm644 "$KOID_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
 enableService chronyd
 
 # --- SECURE DNS (Unbound + DoT + DNSSEC) ---
@@ -115,10 +115,10 @@ commandFailure="Configuring Unbound for Secure DNS has failed."
 mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound || die
 
 # Install Unbound configuration
-command install -Dm644 "$VISS_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
+command install -Dm644 "$KOID_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
 
 # Static resolv.conf pointing to our local Unbound instance
-command install -Dm644 "$VISS_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
+command install -Dm644 "$KOID_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
 
 enableService unbound
 
@@ -185,9 +185,9 @@ if [ "$is_ssd" -eq 1 ]; then
     install cronie || die
     
     # Create the weekly cron job
-    command install -Dm755 "$VISS_FILES_DIR/fstrim" /mnt/etc/cron.weekly/fstrim || die
+    command install -Dm755 "$KOID_FILES_DIR/fstrim" /mnt/etc/cron.weekly/fstrim || die
     
-    # Enable the cronie runit service using your existing libviss function
+    # Enable the cronie runit service using your existing libkoid function
     enableService cronie
 fi
 
