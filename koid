@@ -2,8 +2,8 @@
 
 # This script is an "orchestrator" for the other scripts that exist in the "setup" directory.
 
-# STRICT CONSTRAINTS: ext4, UKI (No GRUB), KDE Wayland, PipeWire, NetworkManager (with MAC randomization).
-# CHOICES: LUKS2 (argon2id) or None, dracut or tinyramfs.
+# STRICT CONSTRAINTS: btrfs, UKI (No GRUB), KDE Wayland, PipeWire, NetworkManager (with MAC randomization).
+# CHOICES: dracut or tinyramfs.
 
 . "$(pwd)/misc/libkoid" || { echo "$(pwd)/misc/libkoid not found. Cannot continue."; exit 1; }
 . "$(pwd)/setup/installer" || { commandFailure="$(pwd)/setup/installer not found. Cannot continue."; die; }
@@ -13,18 +13,17 @@ trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
 # --- HARDCODED SETTINGS ---
 basesystem="base-system"
-filesystem="ext4"
+filesystem="btrfs"
 bootloader="uki"
 network="NetworkManager"
 audio="pipewire"
 desktop="kde"
 
-drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- ext4 filesystem only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n- Hardened fstab defaults\n\nNo changes will be made to the disk until you confirm." 0 0
+drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs filesystem only (with discard=async)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n- Hardened fstab defaults\n\nNo changes will be made to the disk until you confirm." 0 0
 
 # --- 1. DISK SELECTION ---
 diskConfig() {
     local diskArray=() name size
-    # Read disk name and size separately to form proper tag/item pairs for the dialog menu
     while read -r name size; do
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
@@ -43,7 +42,6 @@ diskConfig() {
 
 # --- 2. USER & HOSTNAME ---
 userConfig() {
-    # Username
     while :; do
         username=$(drawDialogBack --nocancel --title "Create User" --inputbox \
             "Enter your username:\n(lowercase letters, digits, '-' and '_';\nmust start with a letter or '_')" 0 0 "${username:-user}")
@@ -58,7 +56,6 @@ userConfig() {
         drawDialog --title "Invalid Username" --msgbox "Invalid username: '${username:-<empty>}'.\n\nThe field is pre-filled with a safe default ('user').\nPress OK on it to accept, or type a valid name:\n- starts with a lowercase letter or '_'\n- then lowercase letters, digits, '-' or '_'" 0 0
     done
 
-    # Hostname
     while :; do
         hostname=$(drawDialogBack --nocancel --title "System Hostname" --inputbox \
             "Enter your system hostname:\n(letters, digits, '-' and '_'; no spaces or dots)" 0 0 "${hostname:-localhost}")
@@ -135,30 +132,20 @@ repositoryConfig() {
     
     [ "$libc" = "glibc" ] && ARCH="x86_64"
     [ "$libc" = "musl" ] && ARCH="x86_64-musl"
-    encryptionConfig
-}
-
-# --- 6. ENCRYPTION CHOICE ---
-encryptionConfig() {
-    drawDialogBack --title "Disk Encryption" --yesno "Do you want to encrypt the root partition with LUKS2 (argon2id)?\n\nIf 'No', the partition will be unencrypted." 0 0
-    ret=$?
-    if [ $ret -eq 3 ]; then repositoryConfig; return
-    elif [ $ret -eq 0 ]; then encryption="Yes"
-    else encryption="No"; fi
     suConfig
 }
 
-# --- 7. PRIVILEGE ESCALATION CHOICE ---
+# --- 6. PRIVILEGE ESCALATION CHOICE ---
 suConfig() {
     su=$(drawDialogBack --no-cancel --title "Privilege Escalation" --menu "Choose your privilege escalation tool:" 0 0 2 \
     "sudo" "- Standard, widely used privilege escalation" \
     "doas" "- Lightweight, secure alternative (OpenBSD style)")
     ret=$?
-    if [ $ret -eq 3 ]; then encryptionConfig; return; fi
+    if [ $ret -eq 3 ]; then repositoryConfig; return; fi
     kernelConfig
 }
 
-# --- 8. KERNEL SELECTION ---
+# --- 7. KERNEL SELECTION ---
 kernelConfig() {
     kernel=$(drawDialogBack --no-cancel --title "Kernel Selection" --menu "Select your Linux kernel:" 0 0 2 \
     "linux-lts" "- Long Term Support kernel (recommended for stability)" \
@@ -168,16 +155,13 @@ kernelConfig() {
     kernelParamsConfig
 }
 
-# --- 8.1 KERNEL SECURITY PRESETS ---
+# --- 7.1 KERNEL SECURITY PRESETS ---
 kernelParamsConfig() {
-    # Base boot parameters (Read-Write, Quiet boot, Log level 3)
     local BASE_PARAMS="rw quiet loglevel=3"
     
-    # Prepend BASE_PARAMS to your profiles so the user sees the whole command line
     local KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
     local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
 
-    # 1. Menu selection
     preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 0 3 \
     "default" "- Default (Good performance with baseline security)" \
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
@@ -191,13 +175,11 @@ kernelParamsConfig() {
         KERN_PARAMS="$KERN_PARAMS_SECURE"
     elif [ "$preset" = "custom" ]; then
         while :; do
-            # 2. Pre-populate the input box with the DEFAULT string
             KERN_PARAMS=$(drawDialogBack --title "Custom Parameters" --inputbox \
                 "Enter custom kernel parameters (space-separated):\n\n*Base boot options (rw, quiet, loglevel) are already included.*" 0 0 "$KERN_PARAMS_DEFAULT")
             ret=$?
             if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
             
-            # If user leaves it blank/empty, fallback to base parameters only
             if [ -z "${KERN_PARAMS// }" ]; then
                 KERN_PARAMS="$BASE_PARAMS"
                 break
@@ -210,7 +192,7 @@ kernelParamsConfig() {
     initrdConfig
 }
 
-# --- 9. INITRAMFS CHOICE ---
+# --- 8. INITRAMFS CHOICE ---
 initrdConfig() {
     initrd=$(drawDialogBack --no-cancel --title "Initramfs Choice" --menu "Select your initramfs generator:" 0 0 2 \
     "tinyramfs" "- Small, fast POSIX Shell initramfs generator" \
@@ -220,7 +202,7 @@ initrdConfig() {
     gpuConfig
 }
 
-# --- 10. GPU SELECTION ---
+# --- 9. GPU SELECTION ---
 gpuConfig() {
     graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:\n(Note: Auto-detect can be inaccurate in VMs)" 0 0 6 \
     "auto" "- Auto-detect (lspci)" \
@@ -248,7 +230,7 @@ gpuConfig() {
     securebootConfig
 }
 
-# --- 11. SECURE BOOT ---
+# --- 10. SECURE BOOT ---
 securebootConfig() {
     drawDialogBack --title "Secure Boot" --yesno "Do you want to generate Secure Boot keys and sign the kernel?\n\nThis installs 'sbctl' and adds a kernel hook to automatically sign kernels on updates." 0 0
     ret=$?
@@ -258,7 +240,7 @@ securebootConfig() {
     appsConfig
 }
 
-# --- 12. ADDITIONAL APPLICATIONS CHECKLIST ---
+# --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
         "dolphin" "KDE File Manager" on
@@ -303,11 +285,11 @@ appsConfig() {
     confirm
 }
 
-# --- 13. CONFIRMATION ---
+# --- 12. CONFIRMATION ---
 confirm() {
     local settings="Target disk: $diskInput (WILL BE WIPED)\n"
-    settings+="Filesystem: ext4\n"
-    settings+="Encryption: $encryption\n"
+    settings+="Filesystem: Btrfs (compress=zstd, discard=async)\n"
+    settings+="Encryption: LUKS2 (argon2id)\n"
     settings+="Bootloader: UKI (No GRUB)\n"
     settings+="Kernel: $kernel\n"
     if [ -n "$KERN_PARAMS" ]; then
@@ -354,15 +336,13 @@ _install() {
     echo "Starting installation..."
     . "$(pwd)"/setup/disk
     
-    # FIX: Ensure /mnt/tmp exists before writing to it
     mkdir -p /mnt/tmp
     
-    # Safe heredoc prevents word-splitting issues with variables
     cat <<EOF > /mnt/tmp/installerOptions
 bootloader=${bootloader@Q}
 su=${su@Q}
 timezone=${timezone@Q}
-encryption=${encryption@Q}
+encryption="Yes"
 diskInput=${diskInput@Q}
 username=${username@Q}
 desktop=${desktop@Q}
@@ -388,22 +368,18 @@ EOF
     clear
     system "xbps-remove -RyO"
 
-    # Clean up cached xbps packages from the target disk (no longer needed)
     system "find /var/cache/xbps -name '*.xbps' -delete 2>/dev/null || true"
 
     exec 1>&3 2>&4
     clear
 
-    # Success path: drop the leftover /tmp log (die() leaves it in /tmp on failure)
     rm -f "$logFile"
     
-    # --- SECURE BOOT ENROLLMENT WARNING ---
     if [ "$secureboot" = "Yes" ]; then
         drawDialog --title "!!! CRITICAL: SECURE BOOT !!!" \
                    --msgbox "Custom Secure Boot keys were generated.\n\nYou MUST enter your BIOS/UEFI settings on your FIRST BOOT and enroll these keys (or the hash of the UKI).\n\nIf you do not do this, the system WILL NOT BOOT." 16 60
     fi
 
-    # --- FINAL REBOOT DIALOG ---
     if drawDialog --title "Installation Complete" --yes-label "Reboot" --no-label "Exit" --yesno "Installation finished successfully.\n\nTotal installer runtime: ${SECONDS} seconds." 0 0 ; then
         reboot
     else
