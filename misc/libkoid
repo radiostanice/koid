@@ -78,8 +78,8 @@ cleanup_mounts() {
         umount -f "$m" 2>/dev/null || break
     done
 
-    if cryptsetup status void_root >/dev/null 2>&1; then
-        fuser -km /dev/mapper/void_root 2>/dev/null || true
+    if dmsetup info void_root >/dev/null 2>&1; then
+        fuser -km "/dev/dm-$(dmsetup info -c --noheadings -o minor void_root 2>/dev/null | tr -d ' ')" 2>/dev/null || true
         cryptsetup close void_root 2>/dev/null || dmsetup remove --force void_root 2>/dev/null || true
     fi
     udevadm settle --timeout=10 2>/dev/null || true
