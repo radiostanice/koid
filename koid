@@ -9,6 +9,7 @@
 
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
+trap 'cleanup_mounts 2>/dev/null' EXIT
 
 drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
 
