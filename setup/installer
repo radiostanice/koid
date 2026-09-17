@@ -48,16 +48,13 @@ dialog --create-rc "$HOME/.dialogrc"
 
 logFile="/tmp/koid-install.log"
 
-# --- Purge leftovers from previous runs (hang-proof) ---
+# --- Purge leftovers (no I/O, cannot hang) ---
 for mapper in /dev/mapper/*; do
     [ -b "$mapper" ] || continue
     name=$(basename "$mapper")
     [ "$name" = "control" ] && continue
-    mountpoint -q "$mapper" 2>/dev/null && continue   # never touch live-session mounts
-    # bounded attempt at a clean close...
-    timeout 15 cryptsetup close "$name" >/dev/null 2>&1 \
-        || dmsetup remove --force --deferred "$name" 2>/dev/null || true
+    mountpoint -q "$mapper" 2>/dev/null && continue
+    dmsetup remove --force --deferred "$name" 2>/dev/null || true
 done
-udevadm settle -t 10 2>/dev/null || true
 
 return 0
