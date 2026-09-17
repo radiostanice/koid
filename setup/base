@@ -69,7 +69,8 @@ echo "UUID=$root_uuid /.snapshots btrfs subvol=@snapshots,compress=zstd:1,discar
 # 3. Hardened tmpfs for /tmp
 echo "tmpfs /tmp tmpfs defaults,nosuid,nodev,noexec,mode=1777 0 0" >> /mnt/etc/fstab || die
 
-# 4. UKI Kernel Command Line
+# --- UKI KERNEL COMMAND LINE ---
+commandFailure="Configuring UKI kernel command line has failed."
 mkdir -p /mnt/etc/kernel || die
 
 luks_uuid=$(blkid -o value -s UUID "$root")
