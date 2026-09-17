@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 . "/tmp/libkoid" || { echo "/tmp/libkoid not found."; exit 1; }
 . "/tmp/installerOptions" || { commandFailure="Sourcing installer options failed."; die; }
@@ -32,12 +32,12 @@ exitFunction () {
 }
 
 userPassword() {
-    printf "%bSet password for user %s: %b\n" "$YELLOW" "$username" "$NC"
+    echo -e "${YELLOW}Set password for user $username: ${NC}"
     while ! passwd "$username"; do :; done
 }
 
 rootPassword() {
-    printf "%bSet your root password: %b\n" "$YELLOW" "$NC"
+    echo -e "${YELLOW}Set your root password: ${NC}"
     while ! passwd root; do :; done
     [ -n "$username" ] && userPassword
     exitFunction
@@ -54,7 +54,7 @@ if [ "$secureboot" = "Yes" ]; then
 
     if [ ! -f /var/lib/sbctl/keys/db/db.key ]; then
         sbctl create-keys || die "Failed to create Secure Boot keys."
-        printf "%bSecure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!%b\n" "$YELLOW" "$NC"
+        echo -e "${YELLOW}Secure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!${NC}"
     fi
 
     # Create the kernel hook for automatic signing
@@ -104,7 +104,7 @@ img=$(ls /boot/initramfs-*.img 2>/dev/null | head -n1)
 
 # Booster handles LUKS out-of-the-box via kernel cmdline and generates a compact image.
 # Just verify the image was created and is reasonably sized (usually a few MBs).
-img_size=$(wc -c < "$img")
+img_size=$(stat -c%s "$img" 2>/dev/null)
 [ "$img_size" -gt 1000000 ] || { commandFailure="$img is too small, likely not generated properly by booster."; die; }
 
 # --- UKI NVRAM REGISTRATION ---
@@ -139,11 +139,6 @@ ln -sf /usr/bin/doas /usr/bin/sudo || die
 sys_locale="${locale#LANG=}"
 [ -z "$sys_locale" ] && sys_locale="en_US.UTF-8"
 
-# Generate locales now so chrooted tools (snapper etc.) don't warn about them
-if [ -e /etc/default/libc-locales ]; then
-    xbps-reconfigure -f glibc-locales >/dev/null 2>&1 || true
-fi
-
 if [ -z "$username" ]; then
     clear; rootPassword
 else
@@ -163,7 +158,7 @@ else
     KDE_CONFIG_DIR="/home/$username/.config"
     mkdir -p "$KDE_CONFIG_DIR" || die
 
-    for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
+    for rc in ksplashrc baloofilerc kactivitymanagerdrc krunnerrc ksmserverrc kwinrc; do
         cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
         chmod 644 "$KDE_CONFIG_DIR/$rc" || die
     done
@@ -173,7 +168,7 @@ else
 
     kde_lang="${sys_locale%%.*}" 
     
-    [ "$kde_lang" = "C" ] || [ "$kde_lang" = "POSIX" ] && kde_lang="en_US"
+    [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
 
     sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
@@ -181,37 +176,21 @@ else
 
     # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE) ---
     commandFailure="Configuring Btrfs snapshots with Snapper has failed."
-
-    # snapper is a D-Bus client: it talks to snapperd over the system bus.
-    # No runit services run inside a chroot, so start a temporary bus here;
-    # D-Bus activation will spawn snapperd on demand.
-    mkdir -p /run/dbus || die
-    tmp_dbus_pid=$(dbus-daemon --system --fork --print-pid) || die
-
-    # /.snapshots must NOT exist yet: snapper creates the subvolume itself,
-    # nested inside the root subvolume (openSUSE-style layout).
-    rmdir /.snapshots 2>/dev/null || true   # drop an empty leftover mount-point dir
-    [ -e /.snapshots ] && { commandFailure="/.snapshots already exists; snapper cannot create it."; die; }
-
+    
+    # Snapper will detect and use the pre-created /.snapshots subvolume
     snapper -c root create-config / || die
 
     # Enforce strict retention policies to prevent snapshots from stacking up infinitely
-    tmpfile=$(mktemp)
-    sed -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
-        -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
-        -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
-        -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
-        -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
-        -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
-        -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
-        -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
-        -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
-        /etc/snapper/configs/root > "$tmpfile" && mv "$tmpfile" /etc/snapper/configs/root || die
-
-    # Tear the temporary bus down again. Kill by PID only: the chroot shares
-    # the PID namespace with the live system, so never "pkill dbus-daemon" here.
-    [ -n "$tmp_dbus_pid" ] && kill "$tmp_dbus_pid" 2>/dev/null || true
-    pkill -x snapperd 2>/dev/null || true
+    sed -i -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
+           -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
+           -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
+           -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
+           -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
+           -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
+           -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
+           -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
+           -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
+           /etc/snapper/configs/root || die
 
     # Enable snooze for hourly and daily tasks (which triggers snapper timeline and cleanup)
     # This completely avoids the need for cron or cronie, as snooze executes /etc/cron.{hourly,daily} scripts
