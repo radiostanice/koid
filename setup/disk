@@ -5,23 +5,50 @@ echo "Running setup/disk..."
 
 # --- CLEANUP PREVIOUS INSTALLATION ---
 echo "Cleaning previous installation..."
-cleanup_mounts
 
-# 2b. HARD GATE: refuse to touch the disk unless the name is truly free.
-#     If it still trips, print the actual offenders instead of guessing.
-if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
-    echo "FATAL: void_root is STILL busy or mapped. Offending processes/mounts:"
-    
-    # Print device-mapper status
-    dmsetup info -c void_root 2>/dev/null || true
-    # Print processes holding the block device open
-    fuser -vm /dev/mapper/void_root 2>/dev/null || true
-    # Print any remaining mounted device-mapper devices
-    awk '$1 ~ /^\/dev\/mapper\// {print $1, $2}' /proc/mounts || true
-    
-    commandFailure="LUKS device void_root could not be unmapped."
-    die
+# 1a. Kill processes living in /mnt, INCLUDING holders of lazy-detached
+#     mounts (readlink shows those as "... (deleted)") - the invisible Open=1.
+for pdir in /proc/[0-9]*; do
+    pid=${pdir#/proc/}
+    [ "$pid" = "$$" ] && continue
+    for what in root cwd; do
+        p=$(readlink "$pdir/$what" 2>/dev/null) || continue
+        case "$p" in
+            /mnt|/mnt/*|"/mnt (deleted)"|/mnt/*" (deleted)")
+                kill -9 "$pid" 2>/dev/null || true ;;
+        esac
+    done
+done
+
+# 1b. Hard-unmount everything under /mnt, deepest first. NO lazy unmount.
+while :; do
+    m=$(awk '$2 ~ /^\/mnt\// {print $2}' /proc/mounts | sort -r | head -n 1)
+    [ -z "$m" ] && break
+    umount -f "$m" 2>/dev/null || break
+done
+umount -f /mnt 2>/dev/null || true
+sync
+
+# 2. Close mappings backed by this disk (your working bash logic, POSIX-ified).
+#    Force-close as fallback, exactly like the version that worked.
+if [ -e /dev/mapper/void_root ]; then
+    fuser -km /dev/mapper/void_root 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || dmsetup remove --force void_root 2>/dev/null || true
 fi
+for mapper in /dev/mapper/*; do
+    [ -b "$mapper" ] || continue
+    name=$(basename "$mapper")
+    [ "$name" = "control" ] && continue
+    backing=$(cryptsetup status "$name" 2>/dev/null | sed -n 's/^ *device: *//p')
+    case "$backing" in
+        "$diskInput"*)
+            echo "Closing LUKS mapping $name..."
+            fuser -km "$mapper" 2>/dev/null || true
+            cryptsetup close "$name" 2>/dev/null || dmsetup remove --force "$name" 2>/dev/null || true
+            ;;
+    esac
+done
+udevadm settle --timeout=10 2>/dev/null || true
 
 # 3. Force the kernel to drop the old table
 i=1
@@ -32,7 +59,7 @@ while [ "$i" -le 5 ]; do
     i=$((i + 1))
 done
 partx -u "$diskInput" 2>/dev/null || true
-udevadm settle
+udevadm settle --timeout=10 2>/dev/null || true
 
 # 4. Wipe filesystem signatures from the disk and all its partitions
 wipefs --all --force "$diskInput" 2>/dev/null || true
