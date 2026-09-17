@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 echo "Running setup/disk..."
 
 # --- CLEANUP PREVIOUS INSTALLATION ---
@@ -6,11 +6,11 @@ echo "Cleaning previous installation..."
 
 # 1. Unmount everything under /mnt, deepest mounts first.
 #    /proc/mounts on purpose: immune to findmnt flag-compat issues.
-awk '$2 ~ /^\/mnt(\/.*)?$/ {print $2}' /proc/mounts | sort -r | while IFS= read -r mount_point; do
+while IFS= read -r mount_point; do
     [ -z "$mount_point" ] && continue
     echo "Unmounting $mount_point..."
     umount -f -l "$mount_point" 2>/dev/null || true
-done
+done < <(awk '$2 ~ /^\/mnt(\/.*)?$/ {print $2}' /proc/mounts | sort -r)
 umount -R /mnt 2>/dev/null || true
 udevadm settle
 
@@ -42,12 +42,10 @@ if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; 
 fi
 
 # 3. Force the kernel to drop the old table
-i=1
-while [ "$i" -le 5 ]; do
+for i in {1..5}; do
     blockdev --rereadpt "$diskInput" 2>/dev/null && break
     echo "Waiting for $diskInput to be released... attempt $i"
     sleep 1
-    i=$((i + 1))
 done
 partx -u "$diskInput" 2>/dev/null || true
 udevadm settle
@@ -62,7 +60,7 @@ done
 if command -v sgdisk >/dev/null 2>&1; then
     sgdisk --zap-all "$diskInput" 2>/dev/null || true
 else
-    dd if=/dev/zero of="$diskInput" bs=1M count=10 2>/dev/null || true
+    dd if=/dev/zero of="$diskInput" bs=1M count=10 status=none 2>/dev/null || true
 fi
 
 # 6. Delete partition table via sfdisk as an extra measure
@@ -97,21 +95,20 @@ partx -u "$diskInput" 2>/dev/null || true
 udevadm settle
 
 # Set partition variables
-case "$diskInput" in
-    /dev/nvme*|/dev/mmcblk*) idvar="p" ;;
-    *) idvar="" ;;
-esac
+if [[ "$diskInput" == /dev/nvme* ]] || [[ "$diskInput" == /dev/mmcblk* ]]; then
+    idvar="p"
+else
+    idvar=""
+fi
 
 esp="${diskInput}${idvar}1"
 root="${diskInput}${idvar}2"
 
 # Wait for partitions to appear
-i=1
-while [ "$i" -le 10 ]; do
+for i in {1..10}; do
     [ -b "$esp" ] && [ -b "$root" ] && break
     echo "Waiting for partitions... attempt $i"
     sleep 1
-    i=$((i + 1))
 done
 
 [ -b "$esp" ] || { commandFailure="ESP partition $esp does not exist." ; die ; }
@@ -129,7 +126,7 @@ mkfs.vfat -F 32 "$esp" || die
 
 # --- ENCRYPTION (LUKS2 ONLY) ---
 commandFailure="Encrypting partition has failed."
-printf "%bEnter your encryption passphrase:%b\n" "$YELLOW" "$NC"
+echo -e "${YELLOW}Enter your encryption passphrase:${NC}"
 
 # Detect if disk is an SSD (rotational == 0)
 is_ssd=0
@@ -141,15 +138,14 @@ if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
 fi
 
 # local is removed because this file is sourced at top-level scope
-crypt_options="--type luks2 --batch-mode --verify-passphrase --pbkdf argon2id"
+crypt_options=("--type" "luks2" "--batch-mode" "--verify-passphrase" "--pbkdf" "argon2id")
 if [ "$is_ssd" -eq 1 ]; then
-    crypt_options="$crypt_options --allow-discards"
+    crypt_options+=("--allow-discards")
 fi
 
-    # shellcheck disable=SC2086
-    while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
+    while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
 
-    printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
+    echo -e "${YELLOW}Opening encrypted partition...${NC}"
     # Bounded retries: an infinite loop here spins forever on non-passphrase
     # errors like "Device void_root already exists."
     for attempt in 1 2 3; do
@@ -177,6 +173,7 @@ btrfs subvolume create /mnt/@home || die
 btrfs subvolume create /mnt/@log || die
 btrfs subvolume create /mnt/@cache || die
 btrfs subvolume create /mnt/@tmp || die
+btrfs subvolume create /mnt/@snapshots || die
 
 # Unmount to remount subvolumes properly
 umount /mnt || die
@@ -184,11 +181,12 @@ umount /mnt || die
 # --- MOUNT SUBVOLUMES ---
 mount -o subvol=@,compress=zstd:1,discard=async "$format_target" /mnt || die
 
-mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp || die
+mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp /mnt/.snapshots || die
 mount -o subvol=@home,compress=zstd:1,discard=async "$format_target" /mnt/home || die
 mount -o subvol=@log,compress=zstd:1,discard=async "$format_target" /mnt/var/log || die
 mount -o subvol=@cache,compress=zstd:1,discard=async "$format_target" /mnt/var/cache || die
 mount -o subvol=@tmp,compress=zstd:1,discard=async "$format_target" /mnt/var/tmp || die
+mount -o subvol=@snapshots,compress=zstd:1,discard=async "$format_target" /mnt/.snapshots || die
 
 mkdir -p /mnt/boot/efi || die
 mount "$esp" /mnt/boot/efi || die
