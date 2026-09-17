@@ -36,70 +36,49 @@ system() {
 # --- Process Killing ---
 # Kills any process inside the chroot, or any host process with its root/cwd inside /mnt.
 kill_chroot_procs() {
-    # Kill any process whose root or cwd is /mnt
     for pdir in /proc/[0-9]*; do
         pid=${pdir#/proc/}
         [ "$pid" = "$$" ] && continue
-        proot=$(readlink "$pdir/root" 2>/dev/null) || continue
-        case "$proot" in
-            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true; continue ;;
-        esac
-        pcwd=$(readlink "$pdir/cwd" 2>/dev/null) || continue
-        case "$pcwd" in
-            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true; continue ;;
-        esac
+        for what in root cwd; do
+            p=$(readlink "$pdir/$what" 2>/dev/null) || continue
+            case "$p" in
+                /mnt|/mnt/*|"/mnt (deleted)"|/mnt/*" (deleted)")
+                    kill -9 "$pid" 2>/dev/null || true ;;
+            esac
+        done
     done
-
-    # Also kill processes holding files open in /mnt
+    # ONLY fuser /mnt when it is a real mount point, else you kill the live rootfs
     if command -v fuser >/dev/null 2>&1 && \
        awk '$2 == "/mnt" {found=1} END {exit !found}' /proc/mounts; then
         fuser -k -m /mnt 2>/dev/null || true
     fi
 }
 
-# --- Robust Cleanup Function ---
 cleanup_mounts() {
     kill_chroot_procs
-
-    # Flush dirty pages: forced/lazy teardown with dirty caches is what
-    # causes "Buffer I/O error" on the next run.
     sync
     swapoff -a 2>/dev/null || true
 
     for fs in proc sys dev/pts dev/shm dev run tmp; do
         umount -f "/mnt/$fs" 2>/dev/null || true
     done
-
-    # Deepest-first hard unmount of everything under /mnt.
-    # NO "-l": lazy hides mounts from mount/lsof but keeps the LUKS device busy.
     while :; do
         m=$(awk '$2 ~ /^\/mnt\// {print $2}' /proc/mounts | sort -r | head -n 1)
         [ -z "$m" ] && break
         umount -f "$m" 2>/dev/null || break
     done
     umount -f /mnt 2>/dev/null || true
-
     while :; do
         m=$(awk '$1 ~ /^\/dev\/mapper\// {print $2}' /proc/mounts | sort -r | head -n 1)
         [ -z "$m" ] && break
         umount -f "$m" 2>/dev/null || break
     done
 
-    # Kill holders of the LUKS *block device* (works even for detached mounts,
-    # unlike fuser -m /mnt which would target the live rootfs!)
-    if [ -e /dev/mapper/void_root ]; then
+    if cryptsetup status void_root >/dev/null 2>&1; then
         fuser -km /dev/mapper/void_root 2>/dev/null || true
+        cryptsetup close void_root 2>/dev/null || dmsetup remove --force void_root 2>/dev/null || true
     fi
-
-    # Clean close with retries. NO dmsetup remove --force.
-    i=1
-    while [ "$i" -le 5 ]; do
-        cryptsetup status void_root >/dev/null 2>&1 || break
-        cryptsetup close void_root 2>/dev/null && break
-        sleep 1
-        i=$((i + 1))
-    done
-    udevadm settle 2>/dev/null || true
+    udevadm settle --timeout=10 2>/dev/null || true
 
     if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
         rm -f /dev/mapper/void_root
