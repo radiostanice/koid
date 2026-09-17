@@ -160,12 +160,6 @@ kernelParamsConfig() {
             if [ $? -eq 0 ]; then break; fi
         done
     fi
-    initrdConfig
-}
-
-# --- 8. INITRAMFS CHOICE ---
-initrdConfig() {
-    initrd="booster"
     gpuConfig
 }
 
