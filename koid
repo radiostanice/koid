@@ -7,21 +7,15 @@
 . "$(pwd)/misc/libkoid" || { echo "$(pwd)/misc/libkoid not found. Cannot continue."; exit 1; }
 . "$(pwd)/setup/installer" || { commandFailure="$(pwd)/setup/installer not found. Cannot continue."; die; }
 
-# Save-fds must exist from the very beginning, so any
-# "exec 1>&3 2>&4" restore (die, traps, end of _install) is always valid.
-exec 3>&1 4>&2
-
-trap 'echo "[debug] koid exited at line $LINENO, status $?" >&2' EXIT
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
-trap 'cleanup_mounts 2>/dev/null' EXIT
 
 drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
 
 # --- 1. DISK SELECTION ---
 diskConfig() {
     tmpmenu=$(mktemp)
-    lsblk -d -o NAME,SIZE -n -e 7,254 > "$tmpmenu"
+    lsblk -d -o NAME,SIZE -n -e7 > "$tmpmenu"
     set --
     while read -r name size; do
         [ -n "$name" ] && set -- "$@" "$name" "$size"
@@ -130,25 +124,17 @@ localeConfig() {
 repositoryConfig() {
     drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 0
     ret=$?
-    if [ "$ret" -eq 3 ]; then 
-        localeConfig; return
+    if [ "$ret" -eq 3 ]; then localeConfig; return
     elif [ "$ret" -eq 0 ]; then
         xmirror
         repository=$(grep -h '^repository=' /etc/xbps.d/*-repository-main.conf 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d '[:space:]')
     else
-        if [ "$libc" = "musl" ]; then
-            repository="https://repo-default.voidlinux.org/current/musl"
-        else
-            repository="https://repo-default.voidlinux.org/current"
-        fi
+        [ "$libc" = "glibc" ] && repository="https://repo-default.voidlinux.org/current"
+        [ "$libc" = "musl" ] && repository="https://repo-default.voidlinux.org/current/musl"
     fi
     
-    if [ "$libc" = "musl" ]; then
-        ARCH="x86_64-musl"
-    else
-        ARCH="x86_64"
-    fi
-
+    [ "$libc" = "glibc" ] && ARCH="x86_64"
+    [ "$libc" = "musl" ] && ARCH="x86_64-musl"
     kernelParamsConfig
 }
 
