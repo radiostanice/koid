@@ -2,7 +2,7 @@
 # Shared utilities for the Koid Linux installer.
 
 # --- Strict error handling ---
-set -eu
+set -u
 commandFailure="An unknown error has occurred."
 
 RED='\033[0;31m'
