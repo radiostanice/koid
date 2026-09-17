@@ -1,179 +1,379 @@
 #!/bin/sh
-# setup/disk - Partitions the disk, sets up LUKS, Btrfs subvolumes, and formats.
 
-echo "Running setup/disk..."
+# ============================================================================
+# Koid - Disk Setup Module
+# ============================================================================
+# This module handles:
+# - Pre-flight checks and cleanup
+# - LUKS encryption setup
+# - Btrfs filesystem creation and subvolume management
+# - Partition and mount configuration
+# ============================================================================
 
-# --- CLEANUP PREVIOUS INSTALLATION ---
-echo "Cleaning previous installation..."
-cleanup_mounts
+# Source dependencies
+. "$(dirname "$0")/../misc/libkoid" || exit 1
 
-# 2b. HARD GATE: refuse to touch the disk unless the name is truly free.
-#     If it still trips, print the actual offenders instead of guessing.
-if cryptsetup status void_root >/dev/null 2>&1 || [ -e /dev/mapper/void_root ]; then
-    echo "FATAL: void_root is STILL busy or mapped. Offending processes/mounts:"
-    lsof +D /mnt 2>/dev/null || true
-    mount | grep /mnt || true
-    commandFailure="LUKS device void_root could not be unmapped."
-    die
-fi
+disk_setup() {
+  local device="$1"
+  local passphrase="$2"
+  local layout="$3"
+  local size="$4"
 
-# 3. Force the kernel to drop the old table
-i=1
-while [ "$i" -le 5 ]; do
-    blockdev --rereadpt "$diskInput" 2>/dev/null && break
-    echo "Waiting for $diskInput to be released... attempt $i"
+  # ========================================================================
+  # PRE-FLIGHT CHECKS - Ensure clean state
+  # ========================================================================
+
+  _info "Running disk pre-flight checks..."
+
+  # Step 1: Kill any lingering processes using /mnt
+  if pgrep -f /mnt >/dev/null 2>&1; then
+    _warn "Found processes using /mnt, killing them..."
+    kill_chroot_procs
     sleep 1
-    i=$((i + 1))
-done
-partx -u "$diskInput" 2>/dev/null || true
-udevadm settle
+  fi
 
-# 4. Wipe filesystem signatures from the disk and all its partitions
-wipefs --all --force "$diskInput" 2>/dev/null || true
-for part in "$diskInput"*; do
-    [ -b "$part" ] && wipefs --all --force "$part" 2>/dev/null || true
-done
-
-# 5. Zap GPT partition table
-if command -v sgdisk >/dev/null 2>&1; then
-    sgdisk --zap-all "$diskInput" 2>/dev/null || true
-else
-    dd if=/dev/zero of="$diskInput" bs=1M count=10 2>/dev/null || true
-fi
-
-# 6. Delete partition table via sfdisk as an extra measure
-sfdisk --delete "$diskInput" 2>/dev/null || true
-
-blockdev --rereadpt "$diskInput" 2>/dev/null || true
-partx -u "$diskInput" 2>/dev/null || true
-udevadm settle
-
-# --- WIPE AND PARTITION ---
-commandFailure="Disk pre-install wipe has failed."
-wipefs --all -f "$diskInput" || die
-
-commandFailure="Writing partition table has failed."
-(
-    echo "g"          # Create GPT
-    echo "n"          # New partition
-    echo "1"          # Partition 1
-    echo ""           # Default first sector
-    echo "+512M"      # 512M for EFI
-    echo "t"          # Change type
-    echo "1"          # Partition 1
-    echo "1"          # EFI System
-    echo "n"          # New partition
-    echo "2"          # Partition 2
-    echo ""           # Default first sector
-    echo ""           # Use all remaining space
-    echo "w"          # Write
-) | fdisk -w always "$diskInput" || die
-
-partx -u "$diskInput" 2>/dev/null || true
-udevadm settle
-
-# Set partition variables
-case "$diskInput" in
-    /dev/nvme*|/dev/mmcblk*) idvar="p" ;;
-    *) idvar="" ;;
-esac
-
-esp="${diskInput}${idvar}1"
-root="${diskInput}${idvar}2"
-
-# Wait for partitions to appear
-i=1
-while [ "$i" -le 10 ]; do
-    [ -b "$esp" ] && [ -b "$root" ] && break
-    echo "Waiting for partitions... attempt $i"
+  # Step 2: Unmount any remaining /mnt filesystems
+  if mountpoint -q /mnt; then
+    _info "Unmounting /mnt from previous run..."
+    umount -l -R /mnt 2>/dev/null || true
     sleep 1
+  fi
+
+  # Step 3: Use findmnt to verify nothing is mounted at /mnt
+  if findmnt /mnt >/dev/null 2>&1; then
+    _error "FATAL: /mnt still has mounted filesystems from previous run:"
+    findmnt /mnt
+    commandFailure="Could not completely unmount /mnt. Run 'umount -l -R /mnt' manually."
+    return 1
+  fi
+
+  # Step 4: Check if void_root mapper still exists
+  if cryptsetup status void_root >/dev/null 2>&1; then
+    _warn "Found leftover void_root mapper from previous run, closing it..."
+    
+    i=1
+    while [ "$i" -le 3 ]; do
+      if cryptsetup close void_root 2>/dev/null; then
+        _info "Successfully closed void_root"
+        break
+      fi
+      
+      if [ "$i" -eq 3 ]; then
+        dmsetup remove --force void_root 2>/dev/null || true
+      fi
+      
+      sleep 1
+      i=$((i + 1))
+    done
+  fi
+
+  # Step 5: Verify the device node is gone
+  if [ -e /dev/mapper/void_root ]; then
+    if ! dmsetup info void_root >/dev/null 2>&1; then
+      rm -f /dev/mapper/void_root 2>/dev/null || true
+    else
+      _error "FATAL: void_root mapper device still exists and cannot be removed."
+      commandFailure="void_root device could not be closed."
+      return 1
+    fi
+  fi
+
+  # Step 6: Verify the disk device exists and is accessible
+  if [ ! -b "$device" ]; then
+    _error "FATAL: Device $device is not a valid block device."
+    commandFailure="Invalid device: $device"
+    return 1
+  fi
+
+  # Step 7: Check if device is already in use
+  if lsblk -n -o MOUNTPOINT "$device" 2>/dev/null | grep -q .; then
+    _error "FATAL: Device $device is already mounted."
+    commandFailure="Device is already in use."
+    return 1
+  fi
+
+  # Step 8: Allow udev to settle
+  udevadm settle 2>/dev/null || true
+
+  _info "Pre-flight checks passed, device is ready"
+
+  # ========================================================================
+  # BEGIN DISK SETUP
+  # ========================================================================
+
+  _info "Starting disk setup on $device with layout: $layout"
+
+  # Wipe the device header to remove any existing partitions/signatures
+  _info "Wiping device header..."
+  if ! dd if=/dev/zero of="$device" bs=1M count=10 2>/dev/null; then
+    commandFailure="Could not wipe device header."
+    return 1
+  fi
+
+  # Ensure all I/O is flushed to disk
+  sync
+  sleep 0.5
+
+  # ========================================================================
+  # LUKS ENCRYPTION SETUP
+  # ========================================================================
+
+  _info "Creating LUKS2 encrypted container on $device..."
+  if ! echo "$passphrase" | cryptsetup luksFormat --type luks2 \
+    --pbkdf pbkdf2 --pbkdf-force-iterations 100000 \
+    "$device" - 2>/dev/null; then
+    commandFailure="LUKS2 formatting failed on $device."
+    return 1
+  fi
+
+  sync
+  sleep 0.5
+
+  # Open the LUKS container
+  _info "Opening LUKS container and mapping to void_root..."
+  if ! echo "$passphrase" | cryptsetup open "$device" void_root - 2>/dev/null; then
+    commandFailure="Failed to open LUKS container on $device."
+    return 1
+  fi
+
+  # Wait for mapper device to appear with retries
+  _info "Waiting for mapper device /dev/mapper/void_root..."
+  i=1
+  while [ "$i" -le 5 ]; do
+    if [ -e /dev/mapper/void_root ]; then
+      _info "Mapper device appeared"
+      break
+    fi
+    sleep 0.5
     i=$((i + 1))
-done
+  done
 
-[ -b "$esp" ] || { commandFailure="ESP partition $esp does not exist." ; die ; }
-[ -b "$root" ] || { commandFailure="Root partition $root does not exist." ; die ; }
+  if [ ! -e /dev/mapper/void_root ]; then
+    commandFailure="Mapper device /dev/mapper/void_root did not appear."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
 
-# --- PRE-FLIGHT: never format a partition a stale mapping still holds ---
-if [ -n "$(ls -A "/sys/class/block/$(basename "$root")/holders" 2>/dev/null)" ]; then
-    commandFailure="$root is still held by a device-mapper mapping from a previous run. Close it (cryptsetup close <name>) or reboot the live session."
-    die
-fi
+  sync
 
-# --- FORMAT ESP ---
-commandFailure="Formatting ESP has failed."
-mkfs.vfat -F 32 "$esp" || die
+  # ========================================================================
+  # FILESYSTEM CREATION
+  # ========================================================================
 
-# --- ENCRYPTION (LUKS2 ONLY) ---
-commandFailure="Encrypting partition has failed."
-printf "%bEnter your encryption passphrase:%b\n" "$YELLOW" "$NC"
+  _info "Creating Btrfs filesystem on /dev/mapper/void_root..."
+  if ! mkfs.btrfs -f /dev/mapper/void_root 2>/dev/null; then
+    commandFailure="Btrfs filesystem creation failed."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
 
-# Detect if disk is an SSD (rotational == 0)
-is_ssd=0
-base_disk=$(basename "$diskInput")
-if [ -f "/sys/block/$base_disk/queue/rotational" ]; then
-    if [ "$(cat /sys/block/$base_disk/queue/rotational)" -eq 0 ]; then
-        is_ssd=1
-    fi
-fi
+  sync
+  sleep 0.5
 
-crypt_options="--type luks2 --batch-mode --verify-passphrase --pbkdf argon2id"
-if [ "$is_ssd" -eq 1 ]; then
-    crypt_options="$crypt_options --allow-discards"
-fi
+  # ========================================================================
+  # MOUNT POINT PREPARATION
+  # ========================================================================
 
-# shellcheck disable=SC2086
-while ! cryptsetup luksFormat $crypt_options "$root"; do :; done
+  _info "Preparing mount directories..."
+  if ! mkdir -p /mnt; then
+    commandFailure="Could not create /mnt directory."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
 
-printf "%bOpening encrypted partition...%b\n" "$YELLOW" "$NC"
-# Bounded retries: an infinite loop here spins forever on non-passphrase
-# errors like "Device void_root already exists."
-for attempt in 1 2 3; do
-    cryptsetup luksOpen "$root" void_root && break
-    if [ "$attempt" -eq 3 ]; then
-        commandFailure="Opening the LUKS container failed."
-        die
-    fi
-    echo "Failed to open LUKS container, retrying ($attempt/3)..."
-done
+  # ========================================================================
+  # INITIAL ROOT MOUNT
+  # ========================================================================
 
-format_target="/dev/mapper/void_root"
+  _info "Mounting filesystem at /mnt..."
+  if ! mount /dev/mapper/void_root /mnt 2>/dev/null; then
+    commandFailure="Failed to mount /dev/mapper/void_root at /mnt."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
 
-# --- FORMAT ROOT (BTRFS ONLY) ---
-commandFailure="Formatting root as Btrfs has failed."
-mkfs.btrfs -f "$format_target" || die
+  sync
+  sleep 0.5
 
-# --- MOUNT ROOT & CREATE SUBVOLUMES ---
-commandFailure="Mounting Btrfs root has failed."
-mount -o compress=zstd:1 "$format_target" /mnt || die
+  # ========================================================================
+  # BTRFS SUBVOLUME CREATION
+  # ========================================================================
 
-btrfs subvolume create /mnt/@ || die
-btrfs subvolume create /mnt/@home || die
-btrfs subvolume create /mnt/@log || die
-btrfs subvolume create /mnt/@cache || die
-btrfs subvolume create /mnt/@tmp || die
+  _info "Creating Btrfs subvolumes..."
 
-# Unmount to remount subvolumes properly
-umount /mnt || die
+  # Create @ subvolume (root filesystem)
+  if ! btrfs subvolume create /mnt/@ 2>/dev/null; then
+    commandFailure="Failed to create @ subvolume."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Created subvolume: @"
 
-# --- MOUNT SUBVOLUMES ---
-mount -o subvol=@,compress=zstd:1,discard=async "$format_target" /mnt || die
+  # Create @home subvolume
+  if ! btrfs subvolume create /mnt/@home 2>/dev/null; then
+    commandFailure="Failed to create @home subvolume."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Created subvolume: @home"
 
-mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp || die
-mount -o subvol=@home,compress=zstd:1,discard=async "$format_target" /mnt/home || die
-mount -o subvol=@log,compress=zstd:1,discard=async "$format_target" /mnt/var/log || die
-mount -o subvol=@cache,compress=zstd:1,discard=async "$format_target" /mnt/var/cache || die
-mount -o subvol=@tmp,compress=zstd:1,discard=async "$format_target" /mnt/var/tmp || die
+  # Create @var subvolume
+  if ! btrfs subvolume create /mnt/@var 2>/dev/null; then
+    commandFailure="Failed to create @var subvolume."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Created subvolume: @var"
 
-mkdir -p /mnt/boot/efi || die
-mount "$esp" /mnt/boot/efi || die
+  # Create @srv subvolume (optional but useful)
+  if ! btrfs subvolume create /mnt/@srv 2>/dev/null; then
+    commandFailure="Failed to create @srv subvolume."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Created subvolume: @srv"
 
-mkdir -p /var/cache/xbps /mnt/var/cache/xbps || die
-mount --bind /var/cache/xbps /mnt/var/cache/xbps || die
+  # Create @tmp subvolume (optional but useful)
+  if ! btrfs subvolume create /mnt/@tmp 2>/dev/null; then
+    commandFailure="Failed to create @tmp subvolume."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Created subvolume: @tmp"
 
-for dir in dev proc sys run; do
-    mkdir -p /mnt/$dir || die
-    mount --rbind /$dir /mnt/$dir || die
-    mount --make-rslave /mnt/$dir || die
-done
+  sync
+  sleep 0.5
 
-return 0
+  # ========================================================================
+  # UNMOUNT AND REMOUNT WITH SUBVOLUMES
+  # ========================================================================
+
+  _info "Unmounting root filesystem to remount with subvolumes..."
+  if ! umount /mnt 2>/dev/null; then
+    commandFailure="Failed to unmount /mnt before remounting subvolumes."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+
+  sync
+  sleep 0.5
+
+  _info "Remounting subvolumes with compression..."
+
+  # Mount @ at /mnt with compression
+  if ! mount -o subvol=@,compress=zstd,relatime /dev/mapper/void_root /mnt 2>/dev/null; then
+    commandFailure="Failed to mount @ subvolume at /mnt."
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Mounted: / (@)"
+
+  sync
+
+  # Create and mount /home
+  if ! mkdir -p /mnt/home; then
+    commandFailure="Failed to create /home directory."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+
+  if ! mount -o subvol=@home,compress=zstd,relatime /dev/mapper/void_root /mnt/home 2>/dev/null; then
+    commandFailure="Failed to mount @home subvolume at /mnt/home."
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Mounted: /home (@home)"
+
+  sync
+
+  # Create and mount /var
+  if ! mkdir -p /mnt/var; then
+    commandFailure="Failed to create /var directory."
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+
+  if ! mount -o subvol=@var,compress=zstd,relatime /dev/mapper/void_root /mnt/var 2>/dev/null; then
+    commandFailure="Failed to mount @var subvolume at /mnt/var."
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Mounted: /var (@var)"
+
+  sync
+
+  # Create and mount /srv
+  if ! mkdir -p /mnt/srv; then
+    commandFailure="Failed to create /srv directory."
+    umount /mnt/var 2>/dev/null || true
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+
+  if ! mount -o subvol=@srv,compress=zstd,relatime /dev/mapper/void_root /mnt/srv 2>/dev/null; then
+    commandFailure="Failed to mount @srv subvolume at /mnt/srv."
+    umount /mnt/var 2>/dev/null || true
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Mounted: /srv (@srv)"
+
+  sync
+
+  # Create and mount /tmp
+  if ! mkdir -p /mnt/tmp; then
+    commandFailure="Failed to create /tmp directory."
+    umount /mnt/srv 2>/dev/null || true
+    umount /mnt/var 2>/dev/null || true
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+
+  if ! mount -o subvol=@tmp,compress=zstd,relatime /dev/mapper/void_root /mnt/tmp 2>/dev/null; then
+    commandFailure="Failed to mount @tmp subvolume at /mnt/tmp."
+    umount /mnt/srv 2>/dev/null || true
+    umount /mnt/var 2>/dev/null || true
+    umount /mnt/home 2>/dev/null || true
+    umount /mnt 2>/dev/null || true
+    cryptsetup close void_root 2>/dev/null || true
+    return 1
+  fi
+  _info "Mounted: /tmp (@tmp)"
+
+  sync
+  sleep 0.5
+
+  # ========================================================================
+  # VERIFICATION
+  # ========================================================================
+
+  _info "Verifying mount structure..."
+  
+  if ! findmnt /mnt >/dev/null 2>&1; then
+    commandFailure="Mount verification failed - /mnt is not mounted."
+    return 1
+  fi
+
+  _info "Disk setup completed successfully"
+  _info "Mount structure:"
+  findmnt /mnt
+  
+  return 0
+}
