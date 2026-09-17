@@ -1,8 +1,16 @@
 #!/bin/bash
 
 commandFailure="Copying XBPS keys has failed."
-mkdir -p /mnt/var/db/xbps/Keys || die
-find /var/db/xbps/keys -maxdepth 1 -type f -exec cp {} /mnt/var/db/xbps/keys/ \; || die
+mkdir -p /mnt/var/db/xbps/keys || die
+[ -d /mnt/var/db/xbps/keys ] || { commandFailure="/mnt/var/db/xbps/keys is not a directory."; die; }
+
+for key in /var/db/xbps/keys/*; do
+    [ -f "$key" ] || continue
+    cp "$key" /mnt/var/db/xbps/keys/ || die
+done
+
+# Hard gate: xbps will prompt interactively later if this is empty
+[ -n "$(ls -A /mnt/var/db/xbps/keys 2>/dev/null)" ] || { commandFailure="No XBPS keys were copied."; die; }
 
 # --- PRE-INSTALL IGNOREPKG CONFIGURATION ---
 # Hardcoded ignores for the standard kernel and sudo
