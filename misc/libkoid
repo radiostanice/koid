@@ -35,155 +35,78 @@ system() {
 
 # --- Process Killing ---
 # Kills any process inside the chroot, or any host process with its root/cwd inside /mnt.
-# ============================================================================
-# CLEANUP FUNCTIONS - Replace these entire functions in libkoid
-# ============================================================================
-
 kill_chroot_procs() {
-  local pids
-  local i
-  local max_attempts=3
+    # Kill any process whose root or cwd is /mnt
+    for pdir in /proc/[0-9]*; do
+        pid=${pdir#/proc/}
+        [ "$pid" = "$$" ] && continue
+        proot=$(readlink "$pdir/root" 2>/dev/null) || continue
+        case "$proot" in
+            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true; continue ;;
+        esac
+        pcwd=$(readlink "$pdir/cwd" 2>/dev/null) || continue
+        case "$pcwd" in
+            /mnt|/mnt/*) kill -9 "$pid" 2>/dev/null || true; continue ;;
+        esac
+    done
 
-  for attempt in $(seq 1 "$max_attempts"); do
-    pids=$(lsof +D /mnt 2>/dev/null | awk 'NR>1 {print $2}' | sort -u)
-    
-    if [ -z "$pids" ]; then
-      return 0
+    # Also kill processes holding files open in /mnt
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k -m /mnt 2>/dev/null || true
     fi
-
-    _info "Killing processes with open files in /mnt (attempt $attempt/$max_attempts)"
-    
-    for pid in $pids; do
-      if kill -0 "$pid" 2>/dev/null; then
-        kill -TERM "$pid" 2>/dev/null || true
-      fi
-    done
-
-    sleep 0.5
-
-    # Force kill any remaining processes
-    for pid in $pids; do
-      if kill -0 "$pid" 2>/dev/null; then
-        kill -9 "$pid" 2>/dev/null || true
-      fi
-    done
-
-    sleep 0.5
-  done
-
-  return 0
 }
 
+# --- Robust Cleanup Function ---
 cleanup_mounts() {
-  local i
-  local mapper_mounts
-  local mount_point
+    # Kill chroot leftovers FIRST, so they don't hold the filesystem busy
+    kill_chroot_procs
 
-  _info "Starting mount cleanup..."
+    # Sync filesystems to flush any dirty page caches.
+    # This is CRITICAL to avoid "buffer I/O error" on subsequent runs!
+    sync
+    swapoff -a 2>/dev/null || true
 
-  # First pass: kill any processes holding files in /mnt
-  kill_chroot_procs
-  sleep 1
-
-  # Second pass: catch stragglers
-  kill_chroot_procs
-  sleep 1
-
-  # Drop filesystem caches to release stale inodes
-  _info "Dropping filesystem caches..."
-  echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-  sync
-  sleep 0.5
-
-  # Unmount recursive with retries
-  _info "Unmounting /mnt recursively..."
-  i=1
-  while [ "$i" -le 15 ]; do
-    if umount -l -R /mnt 2>/dev/null; then
-      _info "Successfully unmounted /mnt"
-      break
-    fi
-    
-    if [ "$i" -eq 1 ]; then
-      _info "Unmount in progress, retrying..."
-    fi
-    
-    sleep 0.5
-    i=$((i + 1))
-  done
-
-  if [ "$i" -gt 15 ]; then
-    _warn "Could not cleanly unmount /mnt, forcing with lazy unmount..."
-  fi
-
-  # Get list of remaining mapper mounts and unmount them
-  _info "Cleaning up mapper mounts..."
-  mapper_mounts=$(awk '$1 ~ /^\/dev\/mapper\// && $2 !~ /^\/dev/ {print $2}' /proc/mounts 2>/dev/null | sort -r)
-  
-  for mount_point in $mapper_mounts; do
-    i=1
-    while [ "$i" -le 3 ]; do
-      if umount -l "$mount_point" 2>/dev/null; then
-        _info "Unmounted $mount_point"
-        break
-      fi
-      sleep 0.5
-      i=$((i + 1))
+    # 1. Unmount chroot virtual filesystems explicitly
+    for fs in proc sys dev/pts dev/shm dev run tmp; do
+        umount -f "/mnt/$fs" 2>/dev/null || true
     done
-  done
 
-  sleep 0.5
-
-  # Verify no mounts remain at /mnt
-  if findmnt /mnt >/dev/null 2>&1; then
-    _warn "Warning: /mnt still has mounted filesystems, attempting forced unmount..."
-    umount -f -l /mnt 2>/dev/null || true
-    sleep 1
-  fi
-
-  # Close LUKS device with retry loop
-  _info "Closing LUKS device void_root..."
-  if cryptsetup status void_root >/dev/null 2>&1; then
-    i=1
-    while [ "$i" -le 5 ]; do
-      if cryptsetup close void_root 2>/dev/null; then
-        _info "Successfully closed void_root"
-        break
-      fi
-      
-      # On final attempt, use dmsetup to force remove
-      if [ "$i" -eq 4 ]; then
-        _warn "Forcing device removal with dmsetup..."
-        dmsetup remove --force void_root 2>/dev/null || true
-      fi
-      
-      sleep 1
-      i=$((i + 1))
+    # 2. Recursively unmount everything under /mnt in reverse alphabetical order.
+    # We do not use "umount -l -R" because:
+    # a) "-R" is not POSIX compliant (BusyBox umount doesn't have it).
+    # b) "-l" (lazy) detaches the mount from the namespace but leaves the kernel
+    #    VFS attached with dirty caches, causing "buffer I/O error" and "device busy"
+    #    errors when trying to close LUKS or format the device later.
+    while true; do
+        # Find the alphabetically last mount under /mnt to ensure nested mounts are 
+        # unmounted before their parents (e.g., /mnt/proc/sys before /mnt/proc).
+        m=$(awk '$3 ~ /^\/mnt\// {print $3}' /proc/mounts | sort -r | head -n 1)
+        [ -z "$m" ] && break
+        umount -f "$m" 2>/dev/null || break
     done
-  fi
 
-  # Final verification and cleanup of stale device nodes
-  sleep 0.5
-  
-  if [ -e /dev/mapper/void_root ]; then
-    if ! dmsetup info void_root >/dev/null 2>&1; then
-      _info "Removing stale /dev/mapper/void_root device node"
-      rm -f /dev/mapper/void_root 2>/dev/null || true
+    # 3. Unmount /mnt itself
+    umount -f /mnt 2>/dev/null || true
+
+    # 4. Drop stray mapper mounts that might not be under /mnt
+    while true; do
+        m=$(awk '$1 ~ /^\/dev\/mapper\// {print $2}' /proc/mounts | sort -r | head -n 1)
+        [ -z "$m" ] && break
+        umount -f "$m" 2>/dev/null || break
+    done
+
+    # 5. Free the LUKS device cleanly. 
+    # We do NOT use "dmsetup remove --force" as it forcefully detaches the device 
+    # while the kernel still holds dirty caches, leading to future I/O errors!
+    if cryptsetup status void_root >/dev/null 2>&1; then
+        cryptsetup close void_root 2>/dev/null || true
     fi
-  fi
+    udevadm settle 2>/dev/null || true
 
-  # Trigger udev to settle
-  udevadm settle 2>/dev/null || true
-
-  _info "Cleanup complete"
-  return 0
-}
-
-cleanup_on_exit() {
-  if [ -n "$commandFailure" ]; then
-    _error "Installation failed: $commandFailure"
-    cleanup_mounts
-  fi
+    # 6. Drop a stale mapper node if the kernel mapping is really gone
+    if [ -e /dev/mapper/void_root ] && ! dmsetup info void_root >/dev/null 2>&1; then
+        rm -f /dev/mapper/void_root
+    fi
 }
 
 drawDialog() {
