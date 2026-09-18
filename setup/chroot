@@ -144,57 +144,80 @@ sysctl --system || true
 sys_locale="${locale#LANG=}"
 [ -z "$sys_locale" ] && sys_locale="en_US.UTF-8"
 
-if [ -z "$username" ]; then
-    clear; rootPassword
-else
-    useradd "$username" -m -d /home/"$username" || die
-    usermod -aG audio,video,kvm,wheel "$username" || die
+# =========================================================================
+# SYSTEM-WIDE HARDENING & DNS RESTORATION
+# =========================================================================
 
-    sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /home/"$username"/.bashrc || die
-    cp /tmp/files/bash_profile /home/"$username"/.bash_profile || die
-    
-    chown "$username":"$username" /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+# --- RESTORE HARDENED DNS ---
+status "Restoring hardened DNS configuration..."
+cp /tmp/files/resolv.conf /etc/resolv.conf || die
+chown root:root /etc/resolv.conf || die
 
-    # TTY1 Autologin
-    mkdir -p /etc/sv/agetty-tty1
-    sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /etc/sv/agetty-tty1/conf || die
-    # Remove unused TTYs (3-6) for faster boot
-    for service in agetty-tty{3..6}; do
-        rm -fv /etc/runit/runsvdir/default/"$service" 2>/dev/null || true
-        rm -fv /var/service/"$service" 2>/dev/null || true
-    done
+# --- SECURE IMPORTANT SYSTEM FILES ---
+status "Locking down critical system files (chattr +i)..."
+commandFailure="Securing system files with chmod/chattr has failed."
 
-    # --- KDE PLASMA HARDENED DEFAULTS ---
-    commandFailure="Configuring KDE Plasma defaults has failed."
-    KDE_CONFIG_DIR="/home/$username/.config"
-    mkdir -p "$KDE_CONFIG_DIR" || die
+# Set strict permissions before locking
+chmod 0400 /etc/doas.conf || die
+# resolv.conf needs 0644 so normal users can read it for DNS queries
+chmod 0644 /etc/fstab /etc/hostname /etc/locale.conf /etc/resolv.conf \
+           /etc/chrony.conf /etc/unbound/unbound.conf \
+           /etc/NetworkManager/conf.d/00-nm-setup.conf /etc/nftables.conf || true
 
-    for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
-        cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
-        chmod 644 "$KDE_CONFIG_DIR/$rc" || die
-    done
+# Lock them down (Note: /etc/resolv.conf is intentionally excluded so 
+# NetworkManager doesn't throw errors, and users can edit it if needed.
+# NetworkManager is configured with dns=none to prevent it from overwriting it).
+chattr +i /etc/nftables.conf /etc/doas.conf /etc/chrony.conf \
+          /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf \
+          /etc/fstab /etc/hostname /etc/locale.conf || die
 
-    # --- DYNAMIC SONNET (SPELL CHECK) CONFIG ---
-    mkdir -p "$KDE_CONFIG_DIR/KDE" || die
+# =========================================================================
+# USER CREATION & CONFIGURATION
+# =========================================================================
 
-    kde_lang="${sys_locale%%.*}" 
-    
-    [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
+useradd "$username" -m -d /home/"$username" || die
+usermod -aG audio,video,kvm,wheel "$username" || die
 
-    sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
-    chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
-    chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
+sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /home/"$username"/.bashrc || die
+cp /tmp/files/bash_profile /home/"$username"/.bash_profile || die
 
-    # --- RESTORE HARDENED DNS ---
-    # We used the live ISO's resolv.conf for chroot downloads. 
-    # Now put the locked-down Unbound one back before we chattr +i it.
-    cp /tmp/files/resolv.conf /etc/resolv.conf || die
-    chown root:root /etc/resolv.conf || die
+chown "$username":"$username" /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+chmod 0644 /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
 
-    # --- SECURE IMPORTANT FILES ---
-    commandFailure="Securing important files with chattr has failed."
-    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile /etc/resolv.conf /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
+# Lock user shell configs
+chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
 
-    clear
-    rootPassword
-fi
+# --- TTY CONFIGURATION ---
+mkdir -p /etc/sv/agetty-tty1
+sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /etc/sv/agetty-tty1/conf || die
+
+# Remove unused TTYs (3-6) for faster boot
+for service in agetty-tty{3..6}; do
+    rm -fv /etc/runit/runsvdir/default/"$service" 2>/dev/null || true
+    rm -fv /var/service/"$service" 2>/dev/null || true
+done
+
+# --- KDE PLASMA HARDENED DEFAULTS ---
+status "Applying KDE Plasma hardened defaults..."
+commandFailure="Configuring KDE Plasma defaults has failed."
+KDE_CONFIG_DIR="/home/$username/.config"
+mkdir -p "$KDE_CONFIG_DIR" || die
+
+for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
+    cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
+    chmod 644 "$KDE_CONFIG_DIR/$rc" || die
+done
+
+# --- DYNAMIC SONNET (SPELL CHECK) CONFIG ---
+mkdir -p "$KDE_CONFIG_DIR/KDE" || die
+
+kde_lang="${sys_locale%%.*}" 
+[[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
+
+sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
+chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
+chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
+
+# --- FINALIZE ---
+clear
+rootPassword
