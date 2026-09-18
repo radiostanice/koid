@@ -67,9 +67,9 @@ die() {
     printf '============================================================\n'
     printf ' INSTALLATION ABORTED\n'
     printf '============================================================\n' "$NC"
-    printf "$RED" ' Reason: %s\n' "$msg"
+    printf '%b' "$RED" ' Reason: %s\n' "$msg"
     printf ' Log:    %s\n' "${logFile:-/tmp/koid-install.log}" "$NC"
-    printf "$BOLD$RED" '============================================================%b\n' "$NC"
+    printf '%b' "$BOLD$RED" '============================================================%b\n' "$NC"
 
     status "Cleaning up mounts..."
     cleanup_mounts
