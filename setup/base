@@ -95,8 +95,10 @@ commandFailure="Configuring sysctl and umask hardening has failed."
 
 mkdir -p /mnt/etc/sysctl.d /mnt/etc/profile.d /mnt/etc/modprobe.d || die
 
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/99-sysctl.conf" /mnt/etc/sysctl.d/99-sysctl.conf || die
+
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysctl.d/99-disable-coredump.conf || die
-/usr/bin/install -Dm644 "$KOID_FILES_DIR/umask.sh" /mnt/etc/profile.d/umask.sh || die
+
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
 
 # Sets the default umask to 077 (user read/write/execute only)
