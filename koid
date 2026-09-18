@@ -316,7 +316,6 @@ EOF
     . "$(pwd)"/setup/desktop
     
     commandFailure="System chroot setup has failed."
-    cp /etc/resolv.conf /mnt/etc/resolv.conf || die
     cp -f "$(pwd)"/misc/libkoid /mnt/tmp/libkoid || die
     cp -f "$(pwd)"/setup/chroot /mnt/tmp/chroot || die
     cp -f "$(pwd)"/misc/60-ukify /mnt/tmp/60-ukify || die
