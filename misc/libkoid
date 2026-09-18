@@ -71,7 +71,7 @@ die() {
     printf ' Log:    %s\n' "${logFile:-/tmp/koid-install.log}"
     printf '============================================================%b\n' "$NC"
 
-    status "Cleaning up mounts..." "$YELLOW"
+    status "Cleaning up mounts..."
     cleanup_mounts
 
     status "Cleanup complete. You may now safely exit or reboot." "$GREEN"
