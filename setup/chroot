@@ -164,6 +164,11 @@ else
     # TTY1 Autologin
     mkdir -p /etc/sv/agetty-tty1
     sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /etc/sv/agetty-tty1/conf || die
+    # Remove unused TTYs (3-6) for faster boot
+    for service in agetty-tty{3..6}; do
+        rm -fv /etc/runit/runsvdir/default/"$service" 2>/dev/null || true
+        rm -fv /var/service/"$service" 2>/dev/null || true
+    done
 
     # --- KDE PLASMA HARDENED DEFAULTS ---
     commandFailure="Configuring KDE Plasma defaults has failed."
