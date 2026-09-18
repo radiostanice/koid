@@ -15,6 +15,14 @@ if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
 fi
 KOID_FILES_DIR="$(cd "${_KOID_MISC_DIR}/../files" &>/dev/null && pwd)"
 
+status() {
+    # Usage:
+    #   status "Message"
+    #   status "Message" "$GREEN"
+    #   status "Message" "$RED"
+    printf '%b==> %s%b\n' "${2:-$CYAN}" "$1" "$NC"
+}
+
 cleanup_mounts() {
     # Unmount chroot virtual filesystems
     for fs in proc sys dev/pts dev/shm dev run tmp; do
