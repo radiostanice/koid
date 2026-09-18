@@ -185,9 +185,15 @@ else
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
 
+    # --- RESTORE HARDENED DNS ---
+    # We used the live ISO's resolv.conf for chroot downloads. 
+    # Now put the locked-down Unbound one back before we chattr +i it.
+    cp /tmp/files/resolv.conf /etc/resolv.conf || die
+    chown root:root /etc/resolv.conf || die
+
     # --- SECURE IMPORTANT FILES ---
     commandFailure="Securing important files with chattr has failed."
-    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
+    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile /etc/resolv.conf /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
     clear
     rootPassword
