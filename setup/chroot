@@ -32,13 +32,15 @@ exitFunction () {
 }
 
 userPassword() {
-    echo -e "${YELLOW}Set password for user $username: ${NC}"
+    echo -e "${CYAN}==> Setting password for user $username...${NC}"
     while ! passwd "$username"; do :; done
+    echo -e "${GREEN}==> Password set for $username${NC}"
 }
 
 rootPassword() {
-    echo -e "${YELLOW}Set your root password: ${NC}"
+    echo -e "${CYAN}==> Setting root password...${NC}"
     while ! passwd root; do :; done
+    echo -e "${GREEN}==> Root password set${NC}"
     [ -n "$username" ] && userPassword
     exitFunction
 }
