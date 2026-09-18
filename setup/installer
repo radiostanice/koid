@@ -30,50 +30,86 @@ else
     libc="musl"
 fi
 
+# --- Network Connectivity & Wi-Fi Setup ---
 echo "Testing for network connectivity..."
-if ! xbps-install -S > /dev/null 2>&1; then
-    # 1. Detect available wireless interfaces using `ip a`
+
+check_internet() {
+    if command -v ping >/dev/null 2>&1; then
+        if ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1; then return 0; fi
+        if ping -c 1 -W 3 repo-default.voidlinux.org >/dev/null 2>&1; then return 0; fi
+    fi
+    if command -v wget >/dev/null 2>&1; then
+        if wget -q --spider --timeout=3 http://repo-default.voidlinux.org >/dev/null 2>&1; then return 0; fi
+    fi
+    if command -v curl >/dev/null 2>&1; then
+        if curl -s --max-time 3 -I http://repo-default.voidlinux.org >/dev/null 2>&1; then return 0; fi
+    fi
+    return 1
+}
+
+if ! check_internet; then
+    # Check if dialog is available, otherwise fallback to terminal prompts
+    if command -v dialog >/dev/null 2>&1; then
+        drawDialog --infobox "No internet connection detected.\nScanning for wireless interfaces..." 3 40
+        USE_DIALOG=1
+    else
+        echo -e "\n\033[1;33m[!] No internet connection detected.\033[0m"
+        USE_DIALOG=0
+    fi
+    
+    # 1. Detect wireless interfaces
     wifi_interfaces=()
     while read -r line; do
         if [[ "$line" =~ ^[0-9]+: ]]; then
             iface=$(echo "$line" | awk -F': ' '{print $2}' | cut -d'@' -f1)
-            # Check if it's a wireless interface by looking for phy80211 or wireless sysfs dirs
-            if [ -d "/sys/class/net/$iface/phy80211" ] || [ -d "/sys/class/net/$iface/wireless" ]; then
+            if [ -d "/sys/class/net/$iface/phy80211" ] || [ -d "/sys/class/net/$iface/wireless" ] || [[ "$iface" =~ ^wl ]]; then
                 wifi_interfaces+=("$iface" "Wireless Interface")
             fi
         fi
     done < <(ip a)
 
     if [ ${#wifi_interfaces[@]} -eq 0 ]; then
-        drawDialog --msgbox "No wireless interfaces found.\nPlease connect an Ethernet cable to continue." 0 0
-        commandFailure="Network check failed: Cannot synchronize Void repositories and no Wi-Fi available."
+        if [ "$USE_DIALOG" -eq 1 ]; then
+            drawDialog --msgbox "No wireless interfaces found.\nPlease connect an Ethernet cable and restart." 0 0
+        else
+            echo "No wireless interfaces found. Please connect an Ethernet cable and restart."
+        fi
+        commandFailure="Network check failed: No internet and no Wi-Fi interface found."
         die
     fi
 
-    # 2. Prompt user to select interface, SSID, and password
-    wifi_iface=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Network Setup" --menu "No internet connection detected.\nSelect a Wi-Fi interface to connect:" 0 0 0 "${wifi_interfaces[@]}")
-    if [ -z "$wifi_iface" ]; then
-        commandFailure="Network check failed: Cannot synchronize Void repositories."
-        die
+    # 2. Prompt for Interface, SSID, and Password
+    if [ "$USE_DIALOG" -eq 1 ]; then
+        wifi_iface=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --menu "Select a wireless interface:" 0 0 0 "${wifi_interfaces[@]}")
+        if [ -z "$wifi_iface" ]; then commandFailure="Wi-Fi setup cancelled."; die; fi
+
+        wifi_ssid=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --inputbox "Enter Wi-Fi SSID (Network Name):" 0 0)
+        if [ -z "$wifi_ssid" ]; then commandFailure="Wi-Fi setup cancelled."; die; fi
+
+        wifi_pass=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --passwordbox "Enter Wi-Fi Password for $wifi_ssid:" 0 0)
+    else
+        echo "Available wireless interfaces:"
+        for ((i=0; i<${#wifi_interfaces[@]}; i+=2)); do
+            echo "  $((i/2 + 1))) ${wifi_interfaces[i]}"
+        done
+        read -p "Select interface number: " iface_num
+        wifi_iface="${wifi_interfaces[$(( (iface_num - 1) * 2 ))]}"
+        if [ -z "$wifi_iface" ]; then commandFailure="Wi-Fi setup cancelled."; die; fi
+
+        read -p "Enter Wi-Fi SSID: " wifi_ssid
+        if [ -z "$wifi_ssid" ]; then commandFailure="Wi-Fi setup cancelled."; die; fi
+
+        read -s -p "Enter Wi-Fi Password: " wifi_pass
+        echo ""
     fi
 
-    wifi_ssid=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --inputbox "Enter Wi-Fi SSID (Network Name):" 0 0)
-    if [ -z "$wifi_ssid" ]; then
-        commandFailure="Network check failed: Cannot synchronize Void repositories."
-        die
-    fi
-
-    wifi_pass=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --passwordbox "Enter Wi-Fi Password for $wifi_ssid:" 0 0)
-
+    # 3. Setup wpa_supplicant
     conf_file="/etc/wpa_supplicant/wpa_supplicant-${wifi_iface}.conf"
     mkdir -p /etc/wpa_supplicant
     
-    # Kill any existing wpa_supplicant on this interface to prevent conflicts
     wpa_cli -i "$wifi_iface" terminate >/dev/null 2>&1 || true
-    
-    # 3. Generate wpa_supplicant configuration
+
     if [ -z "$wifi_pass" ]; then
-        # Handle open networks with no password
         cat <<EOF > "$conf_file"
 network={
     ssid="$wifi_ssid"
@@ -81,16 +117,21 @@ network={
 }
 EOF
     else
-        # Note: Using > instead of >> prevents duplicate network blocks if the user retries
+        # Using > instead of >> to prevent appending duplicate blocks if the user retries
         wpa_passphrase "$wifi_ssid" "$wifi_pass" > "$conf_file"
     fi
 
-    # 4. Connect to Wi-Fi
-    drawDialog --infobox "Connecting to Wi-Fi..." 3 30
+    if [ "$USE_DIALOG" -eq 1 ]; then
+        drawDialog --infobox "Connecting to $wifi_ssid..." 3 30
+    else
+        echo "Connecting to $wifi_ssid..."
+    fi
+    
+    ip link set "$wifi_iface" up >/dev/null 2>&1
     wpa_supplicant -B -i "$wifi_iface" -Dnl80211 -c "$conf_file" >/dev/null 2>&1
     sleep 3
     
-    # 5. Obtain an IP address via DHCP
+    # 4. Obtain IP Address
     if command -v dhcpcd >/dev/null 2>&1; then
         dhcpcd "$wifi_iface" >/dev/null 2>&1 &
     elif command -v dhclient >/dev/null 2>&1; then
@@ -98,12 +139,23 @@ EOF
     fi
     sleep 4
 
-    # 6. Retry the network check
-    echo "Retesting network connectivity..."
-    if ! xbps-install -S > /dev/null 2>&1; then
-        commandFailure="Network check failed: Could not connect to Wi-Fi or synchronize Void repositories."
+    # 5. Verify connection
+    if ! check_internet; then
+        if [ "$USE_DIALOG" -eq 1 ]; then
+            drawDialog --msgbox "Failed to connect to Wi-Fi or obtain IP address.\nPlease check your SSID/Password and try again." 0 0
+        else
+            echo "Failed to connect to Wi-Fi. Please check SSID/Password."
+        fi
+        commandFailure="Network check failed: Could not connect to Wi-Fi."
         die
     fi
+fi
+
+# Now that we have internet, sync repos
+echo "Synchronizing repositories..."
+if ! xbps-install -S > /dev/null 2>&1; then
+    commandFailure="Network check failed: Cannot synchronize Void repositories."
+    die
 fi
 
 commandFailure="Dependency installation has failed."
@@ -111,7 +163,6 @@ xbps-install -Suy xbps || die
 xbps-install -Suy dialog || die
 
 dialog --create-rc "$HOME/.dialogrc"
-
 logFile="/tmp/koid-install.log"
 
 return 0
