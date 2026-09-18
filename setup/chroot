@@ -155,10 +155,6 @@ else
     
     chown "$username":"$username" /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
 
-    # --- SECURE IMPORTANT FILES ---
-    commandFailure="Securing important files with chattr has failed."
-    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
-
     # TTY1 Autologin
     mkdir -p /etc/sv/agetty-tty1
     sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /etc/sv/agetty-tty1/conf || die
@@ -190,4 +186,8 @@ else
     chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
 
     clear; rootPassword
+
+    # --- SECURE IMPORTANT FILES ---
+    commandFailure="Securing important files with chattr has failed."
+    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
 fi
