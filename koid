@@ -12,6 +12,41 @@ trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
 drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab, Snapper & Btrfs Assistant)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
 
+# --- 0. KEYMAP SELECTION ---
+keymapConfig() {
+    local keymaps keymapArray keymap_choice
+    
+    # Try to get the list of available keymaps dynamically
+    if command -v localectl >/dev/null 2>&1; then
+        mapfile -t keymaps < <(localectl list-keymaps 2>/dev/null)
+    else
+        # Fallback: search kbd keymap files directly
+        mapfile -t keymaps < <(find /usr/share/kbd/keymaps/ -type f \( -name "*.map.gz" -o -name "*.map.xz" -o -name "*.map" \) 2>/dev/null | sed -e 's|.*/||' -e 's|\.map.*||' | sort -u)
+    fi
+
+    # Fallback hardcoded list in case nothing is found
+    if [ ${#keymaps[@]} -eq 0 ]; then
+        keymaps=("us" "uk" "de" "fr" "es" "it" "pt" "ru" "jp" "se" "no" "fi" "dk")
+    fi
+
+    for k in "${keymaps[@]}"; do
+        keymapArray+=("$k" "")
+    done
+
+    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 0 0 "${keymapArray[@]}")
+    
+    if [ -n "$keymap_choice" ]; then
+        keymap="$keymap_choice"
+        loadkeys "$keymap" >/dev/null 2>&1 || true
+    fi
+    
+    # Proceed to disk selection
+    diskConfig
+}
+
+# Start the flow
+keymapConfig
+
 # --- 1. DISK SELECTION ---
 diskConfig() {
     local diskArray=() name size
