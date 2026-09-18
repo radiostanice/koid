@@ -21,19 +21,19 @@ commandFailure="Base system installation has failed."
 # Cleaned install list: btrfs-assistant removed; linux-lts and opendoas explicitly added
 XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound linux-lts opendoas
 
-# UKI & Initramfs Dependencies
+# --- UKI & INITRAMFS DEPENDENCIES ---
 commandFailure="UKI/Initramfs package installation has failed."
 install efibootmgr ukify systemd-boot-efistub booster plymouth
 
 # Unbloat: Removed the manual symlink fallback. xbps-alternatives handles it natively.
 system "xbps-alternatives -s booster" || die "Failed to switch to booster"
 
-# --- Plymouth Configuration ---
+# --- PLYMOUTH CONFIGURATION ---
 commandFailure="Configuring Plymouth theme has failed."
 
-system "plymouth-set-default-theme spinner"|| system "plymouth-set-default-theme text" || true
+system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
 system "mkdir -p /etc"
-system "printf 'enable\_plymouth: truen' >> /etc/booster.yaml" || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/booster.yaml" /mnt/etc/booster.yaml || die
 
 # --- HARDENED FSTAB CONFIGURATION ---
 commandFailure="Configuring fstab has failed."
@@ -73,37 +73,47 @@ echo "$hostname" > /mnt/etc/hostname || die
 commandFailure="Configuring NetworkManager hardening failed."
 mkdir -p /mnt/etc/NetworkManager/conf.d || die
 
-command install -Dm644 "$KOID_FILES_DIR/00-nm-setup.conf" \
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/00-nm-setup.conf" \
     /mnt/etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
 # --- NTS SECURE TIME SYNC ---
 commandFailure="Configuring Chrony for NTS has failed."
-command install -Dm644 "$KOID_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/chrony.conf" /mnt/etc/chrony.conf || die
 enableService chronyd
 
 # --- SECURE DNS (Unbound + DoT + DNSSEC) ---
 commandFailure="Configuring Unbound for Secure DNS has failed."
 mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound || die
 
-command install -Dm644 "$KOID_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
-command install -Dm644 "$KOID_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/unbound.conf" /mnt/etc/unbound/unbound.conf || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
 
 enableService unbound
 
 # --- SYSTEM HARDENING: COREDUMPS AND UMASK ---
 commandFailure="Configuring sysctl and umask hardening has failed."
 
-# Sysctl Blacklist
-command install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysctl.d/99-disable-coredump.conf || die
+mkdir -p /mnt/etc/sysctl.d /mnt/etc/profile.d /mnt/etc/modprobe.d || die
 
-# Umask Config
-command install -Dm644 "$KOID_FILES_DIR/umask.sh" /mnt/etc/profile.d/umask.sh || die
-
-# Hardware module blacklisting
-command install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysctl.d/99-disable-coredump.conf || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/umask.sh" /mnt/etc/profile.d/umask.sh || die
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
 
 # Sets the default umask to 077 (user read/write/execute only)
-sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs
+sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs || true
+
+# --- DOAS & FIREWALL CONFIGURATION ---
+commandFailure="Configuring Doas and Firewall has failed."
+
+# UPDATED: Now using /usr/bin/install for consistency and strict 0400 permissions
+/usr/bin/install -Dm0400 "$KOID_FILES_DIR/doas.conf" /mnt/etc/doas.conf || die
+/usr/bin/install -Dm0400 "$KOID_FILES_DIR/nftables.conf" /mnt/etc/nftables.conf || die
+
+# Symlink sudo to doas inside the target system
+system "ln -sf /usr/bin/doas /usr/bin/sudo" || die
+
+# Enable the firewall service on boot
+enableService nftables
 
 # --- INSTALL ADDITIONAL APPS ---
 if [ -n "$extra_packages" ]; then
