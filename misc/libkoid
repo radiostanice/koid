@@ -63,7 +63,7 @@ die() {
     # Show a native dialog box. \Z1 is Red, \Zb is Bold, \Zn is Reset in dialog
     dialog --title " Installation Aborted " \
            --colors \
-           --msgbox "\n\Z1\ZbAn error occurred and the installation was aborted.\Zn\n\n\ZbReason:\Zn\n${msg}\n\n\ZbLog:\Zn\n${logFile:-/tmp/koid-install.log}\n\nThe system has been left in a safe state.\n\Z5You may now safely exit or reboot.\Zn" 16 65
+           --msgbox "\n\Z1\ZbAn error occurred and the installation was aborted.\Zn\n\n\ZbReason:\Zn\n${msg}\n\n\ZbLog:\Zn\n${logFile:-/tmp/koid-install.log}\n\nThe system has been left in a safe state.\n\Z6You may now safely exit or reboot.\Zn" 16 65
 
     # Clean up silently after they press OK
     cleanup_mounts >/dev/null 2>&1
