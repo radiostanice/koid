@@ -99,6 +99,9 @@ command install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysct
 # Umask Config
 command install -Dm644 "$KOID_FILES_DIR/umask.sh" /mnt/etc/profile.d/umask.sh || die
 
+# Hardware module blacklisting
+command install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
+
 # Sets the default umask to 077 (user read/write/execute only)
 sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs
 
