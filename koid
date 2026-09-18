@@ -138,7 +138,7 @@ kernelParamsConfig() {
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
     "custom" "- Custom (Edit the parameters manually - Base options included)")
     ret=$?
-    if [ $ret -eq 3 ]; then kernelConfig; return; fi
+    if [ $ret -eq 3 ]; then repositoryConfig; return; fi
 
     if [ "$preset" = "default" ]; then
         KERN_PARAMS="$KERN_PARAMS_DEFAULT"
