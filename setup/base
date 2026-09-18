@@ -59,7 +59,7 @@ echo -n "rd.luks.name=$luks_uuid=void_root root=/dev/mapper/void_root rootfstype
 if [ -n "$KERN_PARAMS" ]; then
     printf "%s\n" "$KERN_PARAMS" >> /mnt/etc/kernel/cmdline || die
 else
-    printf "rw quiet loglevel=3\n" >> /mnt/etc/kernel/cmdline || die
+    printf "rw quiet splash loglevel=3\n" >> /mnt/etc/kernel/cmdline || die
 fi
 
 # --- LOCALE & HOSTNAME ---
