@@ -19,10 +19,7 @@ cat "$KOID_FILES_DIR/ignore.conf" >> /mnt/etc/xbps.d/ignore.conf || die
 commandFailure="Base system installation has failed."
 
 # Cleaned install list: btrfs-assistant removed; linux-lts and opendoas explicitly added
-XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound snapper snooze linux-lts opendoas
-
-# Make nano the default editor instead of vi
-command install -Dm644 "$KOID_FILES_DIR/nano.sh" /mnt/etc/profile.d/nano.sh || die
+XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound linux-lts opendoas
 
 # UKI & Initramfs Dependencies
 commandFailure="UKI/Initramfs package installation has failed."
