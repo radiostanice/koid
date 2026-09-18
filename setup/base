@@ -90,16 +90,18 @@ mkdir -p /mnt/etc/unbound /mnt/var/lib/unbound || die
 
 enableService unbound
 
-# --- SYSTEM HARDENING: COREDUMPS AND UMASK ---
-commandFailure="Configuring sysctl and umask hardening has failed."
+# --- KERNEL & SYSTEM HARDENING ---
+commandFailure="Installing kernel hardening configs has failed."
+mkdir -p /mnt/etc/sysctl.d /mnt/etc/profile.d /mnt/etc/modprobe.d /mnt/etc/security/limits.d || die
 
-mkdir -p /mnt/etc/sysctl.d /mnt/etc/profile.d /mnt/etc/modprobe.d || die
-
+# 1. Install standard sysctls
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-sysctl.conf" /mnt/etc/sysctl.d/99-sysctl.conf || die
 
-/usr/bin/install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysctl.d/99-disable-coredump.conf || die
-
+# 2. Install modprobe blacklists (e.g., blocking firewire or thunderbolt)
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
+
+# 3. Install Core Dump configs
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/security/limits.d/99-disable-coredump.conf || die
 
 # Sets the default umask to 077 (user read/write/execute only)
 sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs || true
@@ -107,7 +109,6 @@ sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs || true
 # --- DOAS & FIREWALL CONFIGURATION ---
 commandFailure="Configuring Doas and Firewall has failed."
 
-# UPDATED: Now using /usr/bin/install for consistency and strict 0400 permissions
 /usr/bin/install -Dm0400 "$KOID_FILES_DIR/doas.conf" /mnt/etc/doas.conf || die
 /usr/bin/install -Dm0400 "$KOID_FILES_DIR/nftables.conf" /mnt/etc/nftables.conf || die
 
