@@ -12,7 +12,7 @@ title_color = (GREEN,BLACK,ON)
 button_active_color = (BLACK,GREEN,ON)
 button_inactive_color = (WHITE,BLACK,ON)
 button_key_active_color = (BLACK,GREEN,ON)
-button_key_inactive_color = (GREEN,BLACK,ON)
+button_key_inactive_color = (GREEN,BLACK,OFF)
 button_label_active_color = (BLACK,GREEN,OFF)
 button_label_inactive_color = (WHITE,BLACK,ON)
 
