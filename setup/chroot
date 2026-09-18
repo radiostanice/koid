@@ -157,19 +157,18 @@ chown root:root /etc/resolv.conf || die
 status "Locking down critical system files (chattr +i)..."
 commandFailure="Securing system files with chmod/chattr has failed."
 
-# Set strict permissions before locking
 chmod 0400 /etc/doas.conf || die
-# resolv.conf needs 0644 so normal users can read it for DNS queries
 chmod 0644 /etc/fstab /etc/hostname /etc/locale.conf /etc/resolv.conf \
            /etc/chrony.conf /etc/unbound/unbound.conf \
-           /etc/NetworkManager/conf.d/00-nm-setup.conf /etc/nftables.conf || true
+           /etc/NetworkManager/conf.d/00-nm-setup.conf /etc/nftables.conf \
+           /etc/sysctl.d/99-sysctl.conf /etc/sysctl.d/99-disable-coredump.conf \
+           /etc/modprobe.d/99-blacklist.conf || true
 
-# Lock them down (Note: /etc/resolv.conf is intentionally excluded so 
-# NetworkManager doesn't throw errors, and users can edit it if needed.
-# NetworkManager is configured with dns=none to prevent it from overwriting it).
 chattr +i /etc/nftables.conf /etc/doas.conf /etc/chrony.conf \
           /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf \
-          /etc/fstab /etc/hostname /etc/locale.conf || die
+          /etc/fstab /etc/hostname /etc/locale.conf \
+          /etc/sysctl.d/99-sysctl.conf /etc/sysctl.d/99-disable-coredump.conf \
+          /etc/modprobe.d/99-blacklist.conf || die
 
 # =========================================================================
 # USER CREATION & CONFIGURATION
