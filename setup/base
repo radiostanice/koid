@@ -28,15 +28,20 @@ install efibootmgr ukify systemd-boot-efistub booster plymouth
 # Unbloat: Removed the manual symlink fallback. xbps-alternatives handles it natively.
 system "xbps-alternatives -s booster" || die "Failed to switch to booster"
 
-# --- Plymouth Configuration ---
-commandFailure="Configuring Plymouth theme has failed."
-system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
-system "mkdir -p /etc"
-system "printf 'enable_plymouth: true\n' >> /etc/booster.yaml" || die
+# --- Plymouth & Booster Configuration ---
+commandFailure="Configuring Plymouth theme and Booster has failed."
 
-if [ "$repository" != "https://repo-default.voidlinux.org/current" ] && [ "$repository" != "https://repo-default.voidlinux.org/current/musl" ]; then
-    xmirror -s "$repository" -r /mnt || { commandFailure="Repository configuration failed."; die ; }
-fi
+# Void's plymouth package includes: spinner, solar, fade-in, text, script.
+# 'spinner' is the cleanest and most modern choice for Void.
+system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
+
+# Optimized Booster configuration for much faster boots
+cat << EOF > /mnt/etc/booster.yaml
+universal: false
+strip: true
+compression: zstd
+enable_plymouth: true
+EOF
 
 # --- HARDENED FSTAB CONFIGURATION ---
 commandFailure="Configuring fstab has failed."
