@@ -1,0 +1,4 @@
+universal: false
+strip: true
+compression: zstd
+enable_plymouth: true
