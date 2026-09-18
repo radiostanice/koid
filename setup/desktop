@@ -37,11 +37,6 @@ commandFailure="Network setup has failed."
 install NetworkManager
 enableService NetworkManager
 
-# --- FIREWALL ---
-commandFailure="Firewall setup has failed."
-install nftables
-enableService nftables
-
 # --- GUI INSTALLATION (STRICTLY MINIMAL KDE WAYLAND) ---
 commandFailure="GUI installation has failed"
 # Core Plasma Shell (pulls in plasma-workspace, which provides startplasma-wayland)
