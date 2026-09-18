@@ -69,7 +69,7 @@ timezoneConfig() {
     for a in "${areas[@]}"; do menu_args+=("$a" ""); done
 
     local area location
-    area=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your region:" 0 0 0 "${menu_args[@]}")
+    area=$(drawDialogBack --no-cancel --default-item "Europe" --title "Set Timezone" --menu "Select your region:" 0 0 0 "${menu_args[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then userConfig; return; fi
 
