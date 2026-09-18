@@ -145,9 +145,19 @@ else
     useradd "$username" -m -d /home/"$username" || die
     usermod -aG audio,video,kvm,wheel "$username" || die
 
-    sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bash_profile > /home/"$username"/.bash_profile || die
-    chown "$username":"$username" /home/"$username"/.bash_profile || die
-    chmod 644 /home/"$username"/.bash_profile || die
+    sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /home/"$username"/.bashrc || die
+    cp /tmp/files/bash_profile /home/"$username"/.bash_profile || die
+    
+    chown "$username":"$username" /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+    chmod 0644 /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+    chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+
+    # --- SECURE IMPORTANT FILES ---
+    commandFailure="Securing important files with chattr/chmod has failed."
+    chmod 0400 /etc/doas.conf || die
+    chmod 0644 /etc/fstab /etc/hostname /etc/locale.conf /etc/resolv.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
+    
+    chattr +i /etc/doas.conf /etc/fstab /etc/hostname /etc/locale.conf /etc/resolv.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
     # TTY1 Autologin
     mkdir -p /etc/sv/agetty-tty1
@@ -173,29 +183,6 @@ else
     sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
     chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
-
-    # --- BTRFS SNAPSHOTS SETUP (SNAPPER + SNOOZE) ---
-    commandFailure="Configuring Btrfs snapshots with Snapper has failed."
-    
-    # Snapper will detect and use the pre-created /.snapshots subvolume
-    snapper -c root create-config / || die
-
-    # Enforce strict retention policies to prevent snapshots from stacking up infinitely
-    sed -i -e 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/' \
-           -e 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="6"/' \
-           -e 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/' \
-           -e 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/' \
-           -e 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="6"/' \
-           -e 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="0"/' \
-           -e 's/^NUMBER_CLEANUP=.*/NUMBER_CLEANUP="yes"/' \
-           -e 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' \
-           -e 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/' \
-           /etc/snapper/configs/root || die
-
-    # Enable snooze for hourly and daily tasks (which triggers snapper timeline and cleanup)
-    # This completely avoids the need for cron or cronie, as snooze executes /etc/cron.{hourly,daily} scripts
-    ln -s /etc/sv/snooze-hourly /var/service || die
-    ln -s /etc/sv/snooze-daily /var/service || die
 
     clear; rootPassword
 fi
