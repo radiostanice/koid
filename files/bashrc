@@ -1,0 +1,32 @@
+# ~/.bashrc: executed by bash(1) for non-login shells.
+
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# Disable bash history for security
+unset HISTFILE
+
+# Environment Variables
+export CHROMIUM_FLAGS="--ozone-platform-hint=wayland --force-device-scale-factor=1.0"
+export GOOGLE_API_KEY="no"
+export GOOGLE_DEFAULT_CLIENT_ID="0"
+export GOOGLE_DEFAULT_CLIENT_SECRET="0"
+export LANG=@LOCALE@
+export LC_ALL=@LOCALE@
+
+# Default Editor
+export EDITOR=nano
+export VISUAL=nano
+
+# Function to intercept 'sudo nano' and use sudoedit instead
+sudo() {
+    if [[ "$1" == "nano" ]]; then
+        command sudoedit "${@:2}"
+    else
+        command sudo "$@"
+    fi
+}
+alias snano='sudoedit'
