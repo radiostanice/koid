@@ -33,13 +33,17 @@ exitFunction () {
 
 userPassword() {
     status "Setting password for user $username..." "$CYAN"
+    trap 'commandFailure="Password setup cancelled by user."; exitFunction' INT
     while ! passwd "$username"; do :; done
+    trap - INT
     status "Password set for $username" "$GREEN"
 }
 
 rootPassword() {
     status "Setting root password..." "$CYAN"
+    trap 'commandFailure="Password setup cancelled by user."; exitFunction' INT
     while ! passwd root; do :; done
+    trap - INT
     status "Root password set" "$GREEN"
     [ -n "$username" ] && userPassword
     exitFunction
