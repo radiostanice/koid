@@ -5,8 +5,85 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+BOLD=${BOLD:-'\033[1m'}
+CYAN=${CYAN:-'\033[0;36m'}
 
-# --- 1. FILES AND DIALOG THEME SETUP ---
+# ------------------------------------------------------------
+# ASCII box drawing
+# ------------------------------------------------------------
+_koid_box() {
+    local title="$1" color="$2"
+    shift 2
+
+    local lines=("$@")
+    local wrapped=()
+    local line l
+
+    if [ ${#lines[@]} -eq 0 ]; then
+        lines=(" ")
+    fi
+
+    # Wrap long lines nicely if fmt exists
+    for line in "${lines[@]}"; do
+        if command -v fmt >/dev/null 2>&1; then
+            while IFS= read -r l; do
+                wrapped+=("$l")
+            done < <(printf '%s\n' "$line" | fmt -w 62)
+        else
+            wrapped+=("$line")
+        fi
+    done
+
+    local width=${#title}
+    for line in "${wrapped[@]}"; do
+        (( ${#line} > width )) && width=${#line}
+    done
+
+    (( width < 26 )) && width=26
+
+    local border="+"
+    local i
+    for ((i = 0; i < width + 2; i++)); do
+        border+="-"
+    done
+    border+="+"
+
+    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
+    printf '%b| %-*s |%b\n' "$color$BOLD" "$width" "$title" "$NC"
+    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
+
+    for line in "${wrapped[@]}"; do
+        printf '%b| %-*s |%b\n' "$color" "$width" "$line" "$NC"
+    done
+
+    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
+}
+
+print_info_box() {
+    local title="${1:-INFO}"
+    shift 2>/dev/null || true
+    _koid_box "$title" "$CYAN" "$@"
+}
+
+print_ok_box() {
+    local title="${1:-OK}"
+    shift 2>/dev/null || true
+    _koid_box "$title" "$GREEN" "$@"
+}
+
+print_warn_box() {
+    local title="${1:-WARNING}"
+    shift 2>/dev/null || true
+    _koid_box "$title" "$YELLOW" "$@"
+}
+
+print_error_box() {
+    local title="${1:-ERROR}"
+    shift 2>/dev/null || true
+    _koid_box "$title" "$RED" "$@"
+}
+
+# --- FILES AND DIALOG THEME SETUP ---
 _KOID_MISC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
     export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
