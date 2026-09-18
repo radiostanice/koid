@@ -32,8 +32,78 @@ fi
 
 echo "Testing for network connectivity..."
 if ! xbps-install -S > /dev/null 2>&1; then
-    commandFailure="Network check failed: Cannot synchronize Void repositories."
-    die
+    # 1. Detect available wireless interfaces using `ip a`
+    wifi_interfaces=()
+    while read -r line; do
+        if [[ "$line" =~ ^[0-9]+: ]]; then
+            iface=$(echo "$line" | awk -F': ' '{print $2}' | cut -d'@' -f1)
+            # Check if it's a wireless interface by looking for phy80211 or wireless sysfs dirs
+            if [ -d "/sys/class/net/$iface/phy80211" ] || [ -d "/sys/class/net/$iface/wireless" ]; then
+                wifi_interfaces+=("$iface" "Wireless Interface")
+            fi
+        fi
+    done < <(ip a)
+
+    if [ ${#wifi_interfaces[@]} -eq 0 ]; then
+        drawDialog --msgbox "No wireless interfaces found.\nPlease connect an Ethernet cable to continue." 0 0
+        commandFailure="Network check failed: Cannot synchronize Void repositories and no Wi-Fi available."
+        die
+    fi
+
+    # 2. Prompt user to select interface, SSID, and password
+    wifi_iface=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Network Setup" --menu "No internet connection detected.\nSelect a Wi-Fi interface to connect:" 0 0 0 "${wifi_interfaces[@]}")
+    if [ -z "$wifi_iface" ]; then
+        commandFailure="Network check failed: Cannot synchronize Void repositories."
+        die
+    fi
+
+    wifi_ssid=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --inputbox "Enter Wi-Fi SSID (Network Name):" 0 0)
+    if [ -z "$wifi_ssid" ]; then
+        commandFailure="Network check failed: Cannot synchronize Void repositories."
+        die
+    fi
+
+    wifi_pass=$(drawDialog --stdout --no-mouse --backtitle "Koid Linux Installer" --no-cancel --title "Wi-Fi Setup" --passwordbox "Enter Wi-Fi Password for $wifi_ssid:" 0 0)
+
+    conf_file="/etc/wpa_supplicant/wpa_supplicant-${wifi_iface}.conf"
+    mkdir -p /etc/wpa_supplicant
+    
+    # Kill any existing wpa_supplicant on this interface to prevent conflicts
+    wpa_cli -i "$wifi_iface" terminate >/dev/null 2>&1 || true
+    
+    # 3. Generate wpa_supplicant configuration
+    if [ -z "$wifi_pass" ]; then
+        # Handle open networks with no password
+        cat <<EOF > "$conf_file"
+network={
+    ssid="$wifi_ssid"
+    key_mgmt=NONE
+}
+EOF
+    else
+        # Note: Using > instead of >> prevents duplicate network blocks if the user retries
+        wpa_passphrase "$wifi_ssid" "$wifi_pass" > "$conf_file"
+    fi
+
+    # 4. Connect to Wi-Fi
+    drawDialog --infobox "Connecting to Wi-Fi..." 3 30
+    wpa_supplicant -B -i "$wifi_iface" -Dnl80211 -c "$conf_file" >/dev/null 2>&1
+    sleep 3
+    
+    # 5. Obtain an IP address via DHCP
+    if command -v dhcpcd >/dev/null 2>&1; then
+        dhcpcd "$wifi_iface" >/dev/null 2>&1 &
+    elif command -v dhclient >/dev/null 2>&1; then
+        dhclient "$wifi_iface" >/dev/null 2>&1 &
+    fi
+    sleep 4
+
+    # 6. Retry the network check
+    echo "Retesting network connectivity..."
+    if ! xbps-install -S > /dev/null 2>&1; then
+        commandFailure="Network check failed: Could not connect to Wi-Fi or synchronize Void repositories."
+        die
+    fi
 fi
 
 commandFailure="Dependency installation has failed."
