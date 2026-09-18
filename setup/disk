@@ -173,7 +173,6 @@ btrfs subvolume create /mnt/@home || die
 btrfs subvolume create /mnt/@log || die
 btrfs subvolume create /mnt/@cache || die
 btrfs subvolume create /mnt/@tmp || die
-btrfs subvolume create /mnt/@snapshots || die
 
 # Unmount to remount subvolumes properly
 umount /mnt || die
@@ -181,12 +180,11 @@ umount /mnt || die
 # --- MOUNT SUBVOLUMES ---
 mount -o subvol=@,compress=zstd:1,discard=async "$format_target" /mnt || die
 
-mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp /mnt/.snapshots || die
+mkdir -p /mnt/home /mnt/var/log /mnt/var/cache /mnt/var/tmp || die
 mount -o subvol=@home,compress=zstd:1,discard=async "$format_target" /mnt/home || die
 mount -o subvol=@log,compress=zstd:1,discard=async "$format_target" /mnt/var/log || die
 mount -o subvol=@cache,compress=zstd:1,discard=async "$format_target" /mnt/var/cache || die
 mount -o subvol=@tmp,compress=zstd:1,discard=async "$format_target" /mnt/var/tmp || die
-mount -o subvol=@snapshots,compress=zstd:1,discard=async "$format_target" /mnt/.snapshots || die
 
 mkdir -p /mnt/boot/efi || die
 mount "$esp" /mnt/boot/efi || die
