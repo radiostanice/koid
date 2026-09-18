@@ -112,23 +112,37 @@ cleanup_mounts() {
     fi
 }
 
-# --- Improved Error Handler ---
 die() {
     local msg="${1:-$commandFailure}"
-    
+    [ -z "$msg" ] && msg="Unknown failure."
+
+    # Restore original stdout/stderr if redirected by _install()
+    if [ -e /proc/self/fd/3 ] && [ -e /proc/self/fd/4 ]; then
+        exec 1>&3 2>&4
+    fi
+
     tput reset 2>/dev/null || clear
-    
+
     # Restore kernel logging if modified
     if [ -w /proc/sys/kernel/printk ]; then
         echo 4 > /proc/sys/kernel/printk
     fi
-    
-    echo -e "\n${RED}INSTALLATION ABORTED${NC}"
-    echo -e "${RED}Reason: $msg${NC}\n"
-    echo -e "Attempting to cleanly unmount partitions..."
-    
+
+    echo
+    print_error_box "INSTALLATION ABORTED" \
+        "Reason: $msg" \
+        "Log: ${logFile:-/tmp/koid-install.log}"
+
+    echo
+    print_warn_box "CLEANUP" \
+        "Unmounting filesystems and cleaning up temporary state..."
+
     cleanup_mounts
-    echo -e "\nYou may now safely exit or reboot."
+
+    echo
+    print_ok_box "CLEANUP COMPLETE" \
+        "You may now safely exit or reboot."
+
     exit 1
 }
 
