@@ -173,7 +173,7 @@ gpuConfig() {
     "nvidia-nouveau" "- NVIDIA (Open-source Nouveau)" \
     "none" "- Generic / VM Display (virtio, qxl, vmware)")
     ret=$?
-    if [ $ret -eq 3 ]; then initrdConfig; return; fi
+    if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
     
     if [ "$graphics" = "auto" ]; then
         local gpu_info
