@@ -5,272 +5,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
-BOLD=${BOLD:-'\033[1m'}
-CYAN=${CYAN:-'\033[0;36m'}
 
-# ------------------------------------------------------------
-# ASCII box drawing
-# ------------------------------------------------------------
-_koid_box() {
-    local title="$1" color="$2"
-    shift 2
-
-    local lines=("$@")
-    local wrapped=()
-    local line l
-
-    if [ ${#lines[@]} -eq 0 ]; then
-        lines=(" ")
-    fi
-
-    # Wrap long lines nicely if fmt exists
-    for line in "${lines[@]}"; do
-        if command -v fmt >/dev/null 2>&1; then
-            while IFS= read -r l; do
-                wrapped+=("$l")
-            done < <(printf '%s\n' "$line" | fmt -w 62)
-        else
-            wrapped+=("$line")
-        fi
-    done
-
-    local width=${#title}
-    for line in "${wrapped[@]}"; do
-        (( ${#line} > width )) && width=${#line}
-    done
-
-    (( width < 26 )) && width=26
-
-    local border="+"
-    local i
-    for ((i = 0; i < width + 2; i++)); do
-        border+="-"
-    done
-    border+="+"
-
-    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
-    printf '%b| %-*s |%b\n' "$color$BOLD" "$width" "$title" "$NC"
-    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
-
-    for line in "${wrapped[@]}"; do
-        printf '%b| %-*s |%b\n' "$color" "$width" "$line" "$NC"
-    done
-
-    printf '%b%s%b\n' "$color$BOLD" "$border" "$NC"
-}
-
-print_info_box() {
-    local title="${1:-INFO}"
-    shift 2>/dev/null || true
-    _koid_box "$title" "$CYAN" "$@"
-}
-
-print_ok_box() {
-    local title="${1:-OK}"
-    shift 2>/dev/null || true
-    _koid_box "$title" "$GREEN" "$@"
-}
-
-print_warn_box() {
-    local title="${1:-WARNING}"
-    shift 2>/dev/null || true
-    _koid_box "$title" "$YELLOW" "$@"
-}
-
-print_error_box() {
-    local title="${1:-ERROR}"
-    shift 2>/dev/null || true
-    _koid_box "$title" "$RED" "$@"
-}
-
-# ------------------------------------------------------------
-# Password prompt helper
-# ------------------------------------------------------------
-prompt_password_confirm() {
-    local title="$1" text="$2"
-    local pass pass2 ret
-
-    while :; do
-        pass=$(drawDialog --stdout --no-mouse --insecure \
-            --title "$title" \
-            --passwordbox "$text" 0 0)
-        ret=$?
-
-        if [ $ret -ne 0 ]; then
-            unset pass pass2
-            return 1
-        fi
-
-        if [ -z "$pass" ]; then
-            drawDialog --title "$title" \
-                --msgbox "Password cannot be empty." 0 0
-            continue
-        fi
-
-        pass2=$(drawDialog --stdout --no-mouse --insecure \
-            --title "$title" \
-            --passwordbox "Confirm password:" 0 0)
-        ret=$?
-
-        if [ $ret -ne 0 ]; then
-            unset pass pass2
-            return 1
-        fi
-
-        if [ "$pass" = "$pass2" ]; then
-            printf '%s' "$pass"
-            unset pass pass2
-            return 0
-        fi
-
-        drawDialog --title "$title" \
-            --msgbox "Passwords do not match. Please try again." 0 0
-    done
-}
-
-# ------------------------------------------------------------
-# LUKS helpers
-# ------------------------------------------------------------
-luks_format() {
-    local dev="$1"
-    local pass
-
-    if [ -z "$dev" ]; then
-        commandFailure="luks_format() called without a device."
-        die
-    fi
-
-    pass=$(prompt_password_confirm "LUKS Encryption" \
-        "Enter LUKS passphrase for $dev:") || return 1
-
-    print_info_box "LUKS FORMAT" \
-        "Encrypting $dev..."
-
-    # IMPORTANT:
-    # If your old cryptsetup luksFormat line had extra options,
-    # copy them here. Example:
-    #
-    # cryptsetup luksFormat --batch-mode --type luks2 \
-    #     --cipher aes-xts-plain64 --key-size 512 \
-    #     --pbkdf argon2id --key-file=- "$dev"
-    #
-    if ! printf '%s' "$pass" | cryptsetup luksFormat --batch-mode --type luks2 --key-file=- "$dev"; then
-        unset pass
-        commandFailure="Failed to format LUKS device $dev."
-        die
-    fi
-
-    unset pass
-
-    print_ok_box "LUKS READY" \
-        "$dev has been encrypted."
-}
-
-luks_open() {
-    local dev="$1" name="$2"
-    local tries=3
-    local pass ret
-
-    if [ -z "$dev" ] || [ -z "$name" ]; then
-        commandFailure="luks_open() requires device and mapper name."
-        die
-    fi
-
-    if [ -e "/dev/mapper/$name" ]; then
-        print_ok_box "LUKS ALREADY OPEN" \
-            "Device: $dev" \
-            "Mapper: /dev/mapper/$name"
-        return 0
-    fi
-
-    while [ "$tries" -gt 0 ]; do
-        pass=$(drawDialog --stdout --no-mouse --insecure \
-            --title "LUKS Unlock" \
-            --passwordbox "Enter passphrase to open $dev:" 0 0)
-        ret=$?
-
-        if [ $ret -ne 0 ]; then
-            unset pass
-            commandFailure="LUKS unlock cancelled by user."
-            die
-        fi
-
-        if [ -z "$pass" ]; then
-            print_warn_box "EMPTY PASSPHRASE" \
-                "Passphrase cannot be empty."
-            sleep 1
-            continue
-        fi
-
-        if printf '%s' "$pass" | cryptsetup open --type luks --key-file=- "$dev" "$name"; then
-            unset pass
-            sleep 1
-
-            print_ok_box "LUKS OPENED" \
-                "Device: $dev" \
-                "Mapper: /dev/mapper/$name"
-
-            return 0
-        fi
-
-        unset pass
-        tries=$((tries - 1))
-
-        print_error_box "LUKS UNLOCK FAILED" \
-            "Wrong passphrase or device busy." \
-            "Attempts remaining: $tries"
-
-        sleep 1
-    done
-
-    commandFailure="Failed to open LUKS device $dev."
-    die
-}
-
-# ------------------------------------------------------------
-# Password application helpers
-# ------------------------------------------------------------
-apply_root_password() {
-    local pass="$1"
-
-    if [ -z "$pass" ]; then
-        commandFailure="Root password is empty."
-        die
-    fi
-
-    print_info_box "PASSWORD SETUP" \
-        "Setting root password..."
-
-    if ! printf 'root:%s\n' "$pass" | chroot /mnt chpasswd; then
-        commandFailure="Failed to set root password."
-        die
-    fi
-
-    print_ok_box "ROOT PASSWORD SET" \
-        "Root password has been configured."
-}
-
-apply_user_password() {
-    local user="$1" pass="$2"
-
-    if [ -z "$user" ] || [ -z "$pass" ]; then
-        commandFailure="Username or user password is empty."
-        die
-    fi
-
-    print_info_box "PASSWORD SETUP" \
-        "Setting password for user: $user"
-
-    if ! printf '%s:%s\n' "$user" "$pass" | chroot /mnt chpasswd; then
-        commandFailure="Failed to set password for $user."
-        die
-    fi
-
-    print_ok_box "USER PASSWORD SET" \
-        "Password for $user has been configured."
-}
-
-# --- FILES AND DIALOG THEME SETUP ---
+# --- 1. FILES AND DIALOG THEME SETUP ---
 _KOID_MISC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
     export DIALOGRC="${_KOID_MISC_DIR}/dialogrc"
@@ -299,37 +35,23 @@ cleanup_mounts() {
     fi
 }
 
+# --- Improved Error Handler ---
 die() {
     local msg="${1:-$commandFailure}"
-    [ -z "$msg" ] && msg="Unknown failure."
-
-    # Restore original stdout/stderr if redirected by _install()
-    if [ -e /proc/self/fd/3 ] && [ -e /proc/self/fd/4 ]; then
-        exec 1>&3 2>&4
-    fi
-
+    
     tput reset 2>/dev/null || clear
-
+    
     # Restore kernel logging if modified
     if [ -w /proc/sys/kernel/printk ]; then
         echo 4 > /proc/sys/kernel/printk
     fi
-
-    echo
-    print_error_box "INSTALLATION ABORTED" \
-        "Reason: $msg" \
-        "Log: ${logFile:-/tmp/koid-install.log}"
-
-    echo
-    print_warn_box "CLEANUP" \
-        "Unmounting filesystems and cleaning up temporary state..."
-
+    
+    echo -e "\n${RED}INSTALLATION ABORTED${NC}"
+    echo -e "${RED}Reason: $msg${NC}\n"
+    echo -e "Attempting to cleanly unmount partitions..."
+    
     cleanup_mounts
-
-    echo
-    print_ok_box "CLEANUP COMPLETE" \
-        "You may now safely exit or reboot."
-
+    echo -e "\nYou may now safely exit or reboot."
     exit 1
 }
 
