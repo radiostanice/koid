@@ -90,6 +90,18 @@ command install -Dm644 "$KOID_FILES_DIR/resolv.conf" /mnt/etc/resolv.conf || die
 
 enableService unbound
 
+# --- SYSTEM HARDENING: COREDUMPS AND UMASK ---
+commandFailure="Configuring sysctl and umask hardening has failed."
+
+# Sysctl Blacklist
+command install -Dm644 "$KOID_FILES_DIR/99-disable-coredump.conf" /mnt/etc/sysctl.d/99-disable-coredump.conf || die
+
+# Umask Config
+command install -Dm644 "$KOID_FILES_DIR/umask.sh" /mnt/etc/profile.d/umask.sh || die
+
+# Sets the default umask to 077 (user read/write/execute only)
+sed -i 's/^UMASK.*/UMASK\t\t077/g' /mnt/etc/login.defs
+
 # --- INSTALL ADDITIONAL APPS ---
 if [ -n "$extra_packages" ]; then
     commandFailure="Additional packages installation has failed."
