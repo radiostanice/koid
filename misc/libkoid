@@ -4,6 +4,8 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 # --- 1. FILES AND DIALOG THEME SETUP ---
@@ -13,7 +15,20 @@ if [ -f "${_KOID_MISC_DIR}/dialogrc" ]; then
 fi
 KOID_FILES_DIR="$(cd "${_KOID_MISC_DIR}/../files" &>/dev/null && pwd)"
 
-# --- Robust Cleanup Function ---
+# ------------------------------------------------------------
+# Simple colored status output
+# ------------------------------------------------------------
+status() {
+    # Usage:
+    #   status "Message"
+    #   status "Message" "$GREEN"
+    #   status "Message" "$RED"
+    printf '%b==> %s%b\n' "${2:-$CYAN}" "$1" "$NC"
+}
+
+# ------------------------------------------------------------
+# Cleanup function
+# ------------------------------------------------------------
 cleanup_mounts() {
     # Unmount chroot virtual filesystems
     for fs in proc sys dev/pts dev/shm dev run tmp; do
@@ -21,49 +36,245 @@ cleanup_mounts() {
             umount -f "/mnt/$fs" 2>/dev/null
         fi
     done
+
     swapoff -a 2>/dev/null
-    
+
     # Unmount all mounted partitions inside /mnt in reverse order
-    local mounts=$(mount | awk '{print $3}' | grep '^/mnt/' | sort -r)
+    local mounts
+    mounts=$(mount | awk '{print $3}' | grep '^/mnt/' | sort -r)
+
     for m in $mounts; do
         umount -f "$m" 2>/dev/null
     done
-    
+
     # Unmount /mnt itself
     if mountpoint -q /mnt 2>/dev/null; then
         umount -f /mnt 2>/dev/null
     fi
 }
 
-# --- Improved Error Handler ---
+# ------------------------------------------------------------
+# Error handler
+# ------------------------------------------------------------
 die() {
     local msg="${1:-$commandFailure}"
-    
+    [ -z "$msg" ] && msg="Unknown failure."
+
+    # Restore original stdout/stderr if redirected by _install()
+    if [ -e /proc/self/fd/3 ] && [ -e /proc/self/fd/4 ]; then
+        exec 1>&3 2>&4
+    fi
+
     tput reset 2>/dev/null || clear
-    
+
     # Restore kernel logging if modified
     if [ -w /proc/sys/kernel/printk ]; then
         echo 4 > /proc/sys/kernel/printk
     fi
-    
-    echo -e "\n${RED}INSTALLATION ABORTED${NC}"
-    echo -e "${RED}Reason: $msg${NC}\n"
-    echo -e "Attempting to cleanly unmount partitions..."
-    
+
+    printf '%b' "$BOLD$RED"
+    printf '============================================================\n'
+    printf ' INSTALLATION ABORTED\n'
+    printf '============================================================\n'
+    printf ' Reason: %s\n' "$msg"
+    printf ' Log:    %s\n' "${logFile:-/tmp/koid-install.log}"
+    printf '============================================================%b\n' "$NC"
+
+    status "Cleaning up mounts..." "$YELLOW"
     cleanup_mounts
-    echo -e "\nYou may now safely exit or reboot."
+
+    status "Cleanup complete. You may now safely exit or reboot." "$GREEN"
+
     exit 1
 }
 
+# ------------------------------------------------------------
+# Dialog helpers
+# ------------------------------------------------------------
 drawDialog() {
     dialog --stdout --no-mouse \
            --backtitle "Koid Linux Installer" "$@"
 }
 
 drawDialogBack() {
-    dialog --stdout --no-mouse --backtitle "Koid Linux Installer" --extra-button --extra-label "Back" "$@"
+    dialog --stdout --no-mouse \
+           --backtitle "Koid Linux Installer" \
+           --extra-button --extra-label "Back" "$@"
 }
 
+# ------------------------------------------------------------
+# Minimal password prompt helper
+#
+# This function intentionally does not use status(),
+# because its stdout is captured as the password.
+# ------------------------------------------------------------
+prompt_password_confirm() {
+    local title="$1" text="$2"
+    local pass pass2 ret
+
+    while :; do
+        pass=$(drawDialog --stdout --no-mouse --insecure \
+            --title "$title" \
+            --passwordbox "$text" 0 0)
+        ret=$?
+
+        if [ $ret -ne 0 ]; then
+            unset pass pass2
+            return 1
+        fi
+
+        if [ -z "$pass" ]; then
+            drawDialog --title "$title" \
+                --msgbox "Password cannot be empty." 0 0
+            continue
+        fi
+
+        pass2=$(drawDialog --stdout --no-mouse --insecure \
+            --title "$title" \
+            --passwordbox "Confirm password:" 0 0)
+        ret=$?
+
+        if [ $ret -ne 0 ]; then
+            unset pass pass2
+            return 1
+        fi
+
+        if [ "$pass" = "$pass2" ]; then
+            printf '%s' "$pass"
+            unset pass pass2
+            return 0
+        fi
+
+        drawDialog --title "$title" \
+            --msgbox "Passwords do not match. Please try again." 0 0
+    done
+}
+
+# ------------------------------------------------------------
+# Simple LUKS helpers
+# ------------------------------------------------------------
+luks_format() {
+    local dev="$1"
+    local pass
+
+    [ -n "$dev" ] || {
+        commandFailure="luks_format() requires a device."
+        die
+    }
+
+    status "Formatting LUKS partition..."
+
+    pass=$(prompt_password_confirm "LUKS Encryption" \
+        "Enter LUKS passphrase for $dev:") || {
+        commandFailure="LUKS passphrase setup cancelled."
+        die
+    }
+
+    # Add extra cryptsetup options here if you need them.
+    if ! printf '%s' "$pass" | cryptsetup luksFormat --batch-mode --key-file=- "$dev"; then
+        unset pass
+        commandFailure="Failed to format LUKS device $dev."
+        die
+    fi
+
+    unset pass
+    status "LUKS partition formatted" "$GREEN"
+}
+
+luks_open() {
+    local dev="$1" name="$2"
+    local tries=3
+    local pass ret
+
+    [ -n "$dev" ] && [ -n "$name" ] || {
+        commandFailure="luks_open() requires device and mapper name."
+        die
+    }
+
+    if [ -e "/dev/mapper/$name" ]; then
+        status "LUKS partition already open" "$GREEN"
+        return 0
+    fi
+
+    status "Opening LUKS partition..."
+
+    while [ "$tries" -gt 0 ]; do
+        pass=$(drawDialog --stdout --no-mouse --insecure \
+            --title "LUKS Unlock" \
+            --passwordbox "Enter passphrase to open $dev:" 0 0)
+        ret=$?
+
+        if [ $ret -ne 0 ]; then
+            unset pass
+            commandFailure="LUKS unlock cancelled by user."
+            die
+        fi
+
+        if [ -z "$pass" ]; then
+            status "Passphrase cannot be empty" "$YELLOW"
+            sleep 1
+            continue
+        fi
+
+        if printf '%s' "$pass" | cryptsetup open --key-file=- "$dev" "$name"; then
+            unset pass
+            sleep 1
+            status "LUKS partition opened" "$GREEN"
+            return 0
+        fi
+
+        unset pass
+        tries=$((tries - 1))
+        status "Wrong passphrase or device busy. Attempts left: $tries" "$RED"
+        sleep 1
+    done
+
+    commandFailure="Failed to open LUKS device $dev."
+    die
+}
+
+# ------------------------------------------------------------
+# Simple password helpers
+# ------------------------------------------------------------
+apply_root_password() {
+    local pass="$1"
+
+    [ -n "$pass" ] || {
+        commandFailure="Root password is empty."
+        die
+    }
+
+    status "Setting root password..."
+
+    if ! printf 'root:%s\n' "$pass" | chroot /mnt chpasswd; then
+        commandFailure="Failed to set root password."
+        die
+    fi
+
+    status "Root password set" "$GREEN"
+}
+
+apply_user_password() {
+    local user="$1" pass="$2"
+
+    [ -n "$user" ] && [ -n "$pass" ] || {
+        commandFailure="Username or user password is empty."
+        die
+    }
+
+    status "Setting password for $user..."
+
+    if ! printf '%s:%s\n' "$user" "$pass" | chroot /mnt chpasswd; then
+        commandFailure="Failed to set password for $user."
+        die
+    fi
+
+    status "Password set for $user" "$GREEN"
+}
+
+# ------------------------------------------------------------
+# Package / system helpers
+# ------------------------------------------------------------
 install() {
     xbps-install -Sy -R "$repository" -r /mnt "$@" || die "Failed to install package(s): $*"
 }
