@@ -51,6 +51,7 @@ rootPassword() {
 
 chown root:root / || die
 chmod 755 / || die
+chmod 0700 /root || die 
 [ -e /etc/sv/dbus ] && { ln -s /etc/sv/dbus /var/service || die ; }
 
 # --- SECURE BOOT SETUP ---
@@ -167,9 +168,9 @@ else
     # --- SECURE IMPORTANT FILES ---
     commandFailure="Securing important files with chattr/chmod has failed."
     chmod 0400 /etc/nftables.conf /etc/doas.conf || die
-    chmod 0644 /etc/fstab /etc/hostname /etc/locale.conf /etc/resolv.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
+    chmod 0644 /etc/hostname /etc/locale.conf /etc/resolv.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
     
-    chattr +i /etc/nftables.conf /etc/doas.conf /etc/hostname /etc/locale.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
+    chattr +i /etc/nftables.conf /etc/doas.conf /etc/chrony.conf /etc/unbound/unbound.conf /etc/NetworkManager/conf.d/00-nm-setup.conf || die
 
     # TTY1 Autologin
     mkdir -p /etc/sv/agetty-tty1
