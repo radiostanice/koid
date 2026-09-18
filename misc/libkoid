@@ -51,31 +51,23 @@ die() {
     local msg="${1:-$commandFailure}"
     [ -z "$msg" ] && msg="Unknown failure."
 
-    # Restore original stdout/stderr if redirected by _install()
     if [ -e /proc/self/fd/3 ] && [ -e /proc/self/fd/4 ]; then
         exec 1>&3 2>&4
     fi
 
     tput reset 2>/dev/null || clear
-
-    # Restore kernel logging if modified
     if [ -w /proc/sys/kernel/printk ]; then
         echo 4 > /proc/sys/kernel/printk
     fi
 
-    printf '%b' "$BOLD$RED"
-    printf '============================================================\n'
-    printf ' INSTALLATION ABORTED\n'
-    printf '============================================================\n' "$NC"
-    printf '%b' "$RED" ' Reason: %s\n' "$msg"
-    printf ' Log:    %s\n' "${logFile:-/tmp/koid-install.log}" "$NC"
-    printf '%b' "$BOLD$RED" '============================================================%b\n' "$NC"
+    # Show a native dialog box. \Z1 is Red, \Zb is Bold, \Zn is Reset in dialog
+    dialog --title " Installation Aborted " \
+           --colors \
+           --msgbox "\n\Z1\ZbAn error occurred and the installation was aborted.\Zn\n\n\ZbReason:\Zn\n${msg}\n\n\ZbLog:\Zn\n${logFile:-/tmp/koid-install.log}\n\nThe system has been left in a safe state.\n\Z4You may now safely exit or reboot.\Zn" 16 65
 
-    status "Cleaning up mounts..."
-    cleanup_mounts
-
-    status "Cleanup complete. You may now safely exit or reboot." "$GREEN"
-
+    # Clean up silently after they press OK
+    cleanup_mounts >/dev/null 2>&1
+    tput reset 2>/dev/null || clear
     exit 1
 }
 
