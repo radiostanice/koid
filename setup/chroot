@@ -32,15 +32,15 @@ exitFunction () {
 }
 
 userPassword() {
-    echo -e "${CYAN}==> Setting password for user $username...${NC}"
+    status "Setting password for user $username..." "$CYAN"
     while ! passwd "$username"; do :; done
-    echo -e "${GREEN}==> Password set for $username${NC}"
+    status "Password set for $username" "$GREEN"
 }
 
 rootPassword() {
-    echo -e "${CYAN}==> Setting root password...${NC}"
+    status "Setting root password..." "$CYAN"
     while ! passwd root; do :; done
-    echo -e "${GREEN}==> Root password set${NC}"
+    status "Root password set" "$GREEN"
     [ -n "$username" ] && userPassword
     exitFunction
 }
@@ -51,12 +51,12 @@ chmod 755 / || die
 
 # --- SECURE BOOT SETUP ---
 if [ "$secureboot" = "Yes" ]; then
-    echo "Setting up Secure Boot with sbctl..."
+    status "Setting up Secure Boot with sbctl..."
     xbps-install -y sbctl || die "Failed to install sbctl."
 
     if [ ! -f /var/lib/sbctl/keys/db/db.key ]; then
         sbctl create-keys || die "Failed to create Secure Boot keys."
-        echo -e "${YELLOW}Secure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!${NC}"
+        status "Secure Boot keys generated. You MUST enroll them in your BIOS/UEFI on first boot!" "$YELLOW"
     fi
 
     # Create the kernel hook for automatic signing
@@ -77,7 +77,7 @@ chmod 755 /etc/kernel.d/post-install/60-ukify || die
 
 # Dynamically find the installed kernel package
 kernel_pkg=$(xbps-query -l | awk '$1 == "ii" && $2 ~ /^linux[0-9]+\.[0-9]+-/ {print $2}' | sed 's/-[0-9].*//' | head -n 1)
-echo "Detected kernel package: $kernel_pkg"
+status "Detected kernel package: $kernel_pkg"
 if [ -z "$kernel_pkg" ]; then
     commandFailure="Could not detect installed kernel package."
     die
@@ -91,7 +91,7 @@ xbps-reconfigure -f "$kernel_pkg" || die
 
 # Belt and braces: if the targeted reconfigure produced no UKI, reconfigure everything
 if [ ! -f "/boot/efi/EFI/Linux/void-linux.efi" ]; then
-    echo "No UKI after targeted reconfigure, falling back to xbps-reconfigure -fa"
+    status "No UKI after targeted reconfigure, falling back to xbps-reconfigure -fa"
     xbps-reconfigure -fa || die
 fi
 
@@ -116,7 +116,7 @@ efi_stub="/boot/efi/EFI/Linux/void-linux.efi"
 
 # Purge stale entries from previous attempts
 for n in $(efibootmgr -v | grep -F "$efi_label" | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)[* ].*/\1/p'); do
-    echo "Purging stale UEFI boot entry Boot$n"
+    status "Purging stale UEFI boot entry Boot$n"
     efibootmgr -b "$n" -B >/dev/null 2>&1 || true
 done
 
@@ -125,7 +125,7 @@ efibootmgr --create --label "$efi_label" --disk "$diskInput" --part 1 \
 
 newEntry=$(efibootmgr -v | grep -F "$efi_label" | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)[* ].*/\1/p' | head -n1)
 [ -n "$newEntry" ] || die "Could not find the newly created UEFI boot entry for '${efi_label}'."
-echo "Registered UEFI boot entry Boot${newEntry}"
+status "Registered UEFI boot entry Boot${newEntry}"
 
 commandFailure="Post-installation configuration failed (after NVRAM registration)."
 
