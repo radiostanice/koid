@@ -99,7 +99,7 @@ localeConfig() {
     localeList=$(grep -F '.UTF-8' /etc/default/libc-locales | awk '{print $1}' | sed -e 's/^#//' | sort -u)
     for i in $localeList; do tmp+=("$i" ""); done
     
-    localeChoice=$(drawDialogBack --no-cancel --title "Locale Selection" --menu "Please choose your system locale." 0 0 0 "${tmp[@]}")
+    localeChoice=$(drawDialogBack --no-cancel --default-item "en_US.UTF-8" --title "Locale Selection" --menu "Please choose your system locale." 0 0 0 "${tmp[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then timezoneConfig; return; fi
     
