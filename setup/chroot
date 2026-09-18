@@ -140,6 +140,10 @@ cp /tmp/files/doas.conf /etc/doas.conf || die
 chown root:root /etc/doas.conf || die
 ln -sf /usr/bin/doas /usr/bin/sudo || die
 
+# --- APPLY SYSCTL CONFIGURATION ---
+status "Applying sysctl kernel parameters..."
+sysctl --system || true
+
 # --- Firewall rules ---
 cp /tmp/files/nftables.conf /etc/nftables.conf || die
 
