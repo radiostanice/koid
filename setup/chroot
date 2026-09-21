@@ -211,6 +211,21 @@ sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > /tmp/Sonnet.conf || di
 /usr/bin/install -Dm644 /tmp/Sonnet.conf "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
 rm -f /tmp/Sonnet.conf
 
+# ===================
+# SUID/SGID HARDENING 
+# ===================
+status "Stripping legacy/unused SUID/SGID bits..."
+commandFailure="SUID/SGID hardening has failed."
+
+chmod g-s /usr/bin/write /usr/bin/wall 2>/dev/null || true
+chmod u-s /usr/bin/chfn 2>/dev/null || true
+chmod u-s /usr/bin/xbps-uchroot 2>/dev/null || true
+chmod u-s /usr/bin/newgrp /usr/bin/sg 2>/dev/null || true
+chmod u-s /usr/bin/gpasswd 2>/dev/null || true
+chmod u-s /usr/bin/chage /usr/bin/expiry 2>/dev/null || true
+chmod u-s /usr/bin/chsh 2>/dev/null || true
+chmod u-s /usr/libexec/ssh-keysign 2>/dev/null || true
+
 # --- FINALIZE ---
 clear
 rootPassword
