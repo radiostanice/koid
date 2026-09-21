@@ -51,10 +51,14 @@ install elogind polkit-elogind dbus
 enableService polkitd
 
 # Plasma-specific integrations for audio and network system tray widgets, the default sound theme, and power profile management
-install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon
+install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon xdg-desktop-portal-kde
+
+# --- GTK CONFIGURATION & THEMES (Fixes Missing "GTK Application Style" Button) ---
+# Adds the "Configure GNOME/GTK Application Style" button to System Settings
+install kde-gtk-config breeze-gtk gtk-engine-murrine
 
 # Basic XDG utilities
-install xdg-user-dirs xdg-utils 
+install xdg-user-dirs xdg-utils
 
 # --- XDG AUTOSTART & SERVICES (SYSTEM-WIDE) ---
 commandFailure="System-wide autostart and service setup has failed."
