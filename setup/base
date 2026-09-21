@@ -37,19 +37,28 @@ system "plymouth-set-default-theme spinner" || system "plymouth-set-default-them
 # initramfs (booster requires them in modules_force_load when plymouth is on).
 # 'none' (VMs / generic displays) falls back to probing the live host.
 case "$graphics" in
-    amd)            drm_modules="amdgpu" ;;
-    intel)          drm_modules="i915" ;;
-    nvidia)         drm_modules="nvidia,nvidia_modeset" ;;
-    nvidia-nouveau) drm_modules="nouveau" ;;
-    *)
-        drm_modules=""
-        for d in /sys/class/drm/card*/device/driver; do
-            [ -e "$d" ] || continue
-            m="$(basename "$(readlink -f "$d")")"
-            case ",$drm_modules," in *",$m,"*) ;; *) drm_modules="${drm_modules:+$drm_modules,}$m" ;; esac
-        done
-        ;;
+amd)            drm_modules="amdgpu" ;;
+intel)          drm_modules="i915" ;;
+nvidia)         drm_modules="nvidia,nvidia_modeset" ;;
+nvidia-nouveau) drm_modules="nouveau" ;;
+*)              drm_modules="" ;;
 esac
+
+# ALWAYS merge the KMS driver bound on the live host: this is exactly what
+# booster compares modules_force_load against at build time (qxl, virtio_gpu,
+# bochs-drm, vmwgfx in VMs).
+for d in /sys/class/drm/card*/device/driver; do
+    [ -e "$d" ] || continue
+    m="$(basename "$(readlink -f "$d")")"
+    m="${m//-/_}"                 # driver name (bochs-drm) -> module name (bochs_drm)
+    case ",$drm_modules," in *",$m,"*) ;; *) drm_modules="${drm_modules:+$drm_modules,}$m" ;; esac
+done
+
+# Framebuffer-only VM (no DRM card bound): give Plymouth the paravirtual KMS
+# modules anyway so booster's check passes on first boot too.
+if [ -z "$drm_modules" ] && grep -q ' hypervisor' /proc/cpuinfo; then
+    drm_modules="qxl,virtio_gpu,bochs_drm,vmwgfx"
+fi
 
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/booster.yaml" /mnt/etc/booster.yaml || die
 
