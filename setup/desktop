@@ -78,6 +78,8 @@ system "ln -sf /usr/share/applications/octoxbps-notifier.desktop /etc/xdg/autost
 install oxygen oxygen-sounds
 # screenshot
 install spectacle
+# archive manager
+install ark
 
 # --- EXTRA PACKAGES SETUP ---
 if echo "$extra_packages" | grep -qw "chromium"; then
