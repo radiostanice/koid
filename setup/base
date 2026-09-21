@@ -19,7 +19,7 @@ cat "$KOID_FILES_DIR/ignore.conf" >> /mnt/etc/xbps.d/ignore.conf || die
 commandFailure="Base system installation has failed."
 
 # Cleaned install list: btrfs-assistant removed; linux-lts and opendoas explicitly added
-XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound linux-lts opendoas nftables
+XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound linux-lts opendoas doasedit nftables
 
 # --- UKI & INITRAMFS DEPENDENCIES ---
 commandFailure="UKI/Initramfs package installation has failed."
