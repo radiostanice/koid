@@ -239,7 +239,9 @@ securebootConfig() {
 # --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
+        "gwenview" "KDE photos viewer" on
         "kate" "KDE Advanced text editor" on
+        "kwrite" "KDE Simple text editor" off
         "chromium" "Chromium web browser" off
         "firefox" "Firefox web browser" off
         "flatpak" "Flatpak package management" off
