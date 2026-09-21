@@ -111,4 +111,20 @@ system "ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf /etc/pipewire
 # Link to autostart
 system "ln -sf /usr/share/applications/pipewire.desktop /etc/xdg/autostart/pipewire.desktop"
 
+# \-\-\- CUSTOM WALLPAPERS (SYSTEM-WIDE) ---
+commandFailure="System-wide wallpapers setup has failed."
+
+# 1. Create the target directory in the new system's mount point (/mnt)
+mkdir -p /mnt/usr/share/wallpapers || die
+
+# 2. Explicitly copy the contents of your wallpapers folder to the target system.
+cp -a wallpapers/* /mnt/usr/share/wallpapers/ || die
+
+# 3. Ensure correct ownership inside the chroot (target system)
+system "chown -R root:root /usr/share/wallpapers"
+
+# 4. Enforce correct permissions (755 for directories, 644 for files)
+system "find /usr/share/wallpapers -type d -exec chmod 755 {} +"
+system "find /usr/share/wallpapers -type f -exec chmod 644 {} +"
+
 return 0
