@@ -198,22 +198,18 @@ done
 status "Applying KDE Plasma hardened defaults..."
 commandFailure="Configuring KDE Plasma defaults has failed."
 KDE_CONFIG_DIR="/home/$username/.config"
-mkdir -p "$KDE_CONFIG_DIR" || die
 
+# Loop through your KDE config files and use 'install'
 for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
-    cp "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
-    chmod 644 "$KDE_CONFIG_DIR/$rc" || die
+    /usr/bin/install -Dm644 "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
 done
 
-# --- DYNAMIC SONNET (SPELL CHECK) CONFIG ---
-mkdir -p "$KDE_CONFIG_DIR/KDE" || die
-
-kde_lang="${sys_locale%%.*}" 
+# Sonnet spellcheck config
+kde_lang="${sys_locale%%.*}"
 [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
-
-sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
-chmod 644 "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
-chown -R "$username:$username" "$KDE_CONFIG_DIR" || die
+sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > /tmp/Sonnet.conf || die
+/usr/bin/install -Dm644 /tmp/Sonnet.conf "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
+rm -f /tmp/Sonnet.conf
 
 # --- FINALIZE ---
 clear
