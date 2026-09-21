@@ -47,14 +47,13 @@ install plasma-desktop plasma-workspace
 install kwin xorg-server-xwayland
 
 # Core session, privilege, and IPC management (MUST be enabled for Plasma to function)
-install elogind polkit-elogind dbus
+install elogind polkit-elogind dbus kf6-kded
 enableService polkitd
 
 # Plasma-specific integrations for audio and network system tray widgets, the default sound theme, and power profile management
 install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon xdg-desktop-portal-kde
 
-# --- GTK CONFIGURATION & THEMES (Fixes Missing "GTK Application Style" Button) ---
-# Adds the "Configure GNOME/GTK Application Style" button to System Settings
+# --- GTK CONFIGURATION & THEMES ---
 install kde-gtk-config breeze-gtk gtk-engine-murrine
 
 # Basic XDG utilities
