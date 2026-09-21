@@ -71,12 +71,15 @@ install kinfocenter aha fwupd lm_sensors clinfo glxinfo Vulkan-Tools wayland-uti
 install dolphin
 # terminal
 install konsole
+# octoxbps package manager
+install octoxbps
+system "ln -sf /usr/share/applications/octoxbps-notifier.desktop /etc/xdg/autostart/octoxbps-notifier.desktop"
+# oxygen theme
+install oxygen oxygen-sounds
+# screenshot
+install spectacle
 
 # --- EXTRA PACKAGES SETUP ---
-if echo "$extra_packages" | grep -qw "oxygen"; then
-    install oxygen-sounds
-fi
-
 if echo "$extra_packages" | grep -qw "chromium"; then
     install chromium-qt6
 fi
@@ -105,10 +108,5 @@ system "ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf /etc/pipewire
 
 # Link to autostart
 system "ln -sf /usr/share/applications/pipewire.desktop /etc/xdg/autostart/pipewire.desktop"
-
-# Link OctoXBPS notifier to system-wide autostart if selected
-if echo "$extra_packages" | grep -qw "octoxbps"; then
-    system "ln -sf /usr/share/applications/octoxbps-notifier.desktop /etc/xdg/autostart/octoxbps-notifier.desktop"
-fi
 
 return 0
