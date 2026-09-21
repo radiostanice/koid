@@ -239,6 +239,7 @@ securebootConfig() {
 # --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
+        "kate" "KDE Advanced text editor" on
         "chromium" "Chromium web browser" off
         "firefox" "Firefox web browser" off
         "flatpak" "Flatpak package management" off
