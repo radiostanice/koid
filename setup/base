@@ -4,7 +4,6 @@ commandFailure="Copying XBPS keys has failed."
 mkdir -p /mnt/var/db/xbps/keys || die
 [ -d /mnt/var/db/xbps/keys ] || { commandFailure="/mnt/var/db/xbps/keys is not a directory."; die; }
 
-# FIX 1: Use 'install' instead of 'cp' to guarantee 0644 root:root permissions
 for key in /var/db/xbps/keys/*; do
     [ -f "$key" ] || continue
     /usr/bin/install -Dm644 "$key" "/mnt/var/db/xbps/keys/$(basename "$key")" || die
@@ -32,15 +31,8 @@ xbps-alternatives -r /mnt -s booster || die "Failed to switch to booster"
 
 # --- PLYMOUTH CONFIGURATION ---
 commandFailure="Configuring Plymouth theme has failed."
-
-# CRITICAL FIX: plymouth-set-default-theme modifies the Live ISO's /etc, NOT /mnt!
-# We must write the config directly to the target rootfs so booster sees it.
-mkdir -p /mnt/etc/plymouth || die
-cat <<EOF > /mnt/etc/plymouth/plymouthd.conf || die
-[Daemon]
-Theme=spinner
-EOF
-chmod 0644 /mnt/etc/plymouth/plymouthd.conf || die
+# Deploy the theme configuration directly to the target rootfs so booster picks it up
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/plymouthd.conf" /mnt/etc/plymouth/plymouthd.conf || die
 
 # Map the chosen GPU driver to the KMS module(s) Plymouth needs inside the
 # initramfs (booster requires them in modules_force_load when plymouth is on).
