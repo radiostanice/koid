@@ -4,9 +4,10 @@ commandFailure="Copying XBPS keys has failed."
 mkdir -p /mnt/var/db/xbps/keys || die
 [ -d /mnt/var/db/xbps/keys ] || { commandFailure="/mnt/var/db/xbps/keys is not a directory."; die; }
 
+# FIX 1: Use 'install' instead of 'cp' to guarantee 0644 root:root permissions
 for key in /var/db/xbps/keys/*; do
     [ -f "$key" ] || continue
-    cp "$key" /mnt/var/db/xbps/keys/ || die
+    /usr/bin/install -Dm644 "$key" "/mnt/var/db/xbps/keys/$(basename "$key")" || die
 done
 
 # Hard gate: xbps will prompt interactively later if this is empty
@@ -14,7 +15,8 @@ done
 
 # --- PRE-INSTALL IGNOREPKG CONFIGURATION ---
 mkdir -p /mnt/etc/xbps.d
-cat "$KOID_FILES_DIR/ignore.conf" >> /mnt/etc/xbps.d/ignore.conf || die
+# FIX 2: Use 'install' instead of 'cat >>' to ensure proper permissions
+/usr/bin/install -Dm644 "$KOID_FILES_DIR/ignore.conf" /mnt/etc/xbps.d/ignore.conf || die
 
 commandFailure="Base system installation has failed."
 
@@ -25,13 +27,20 @@ XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano 
 commandFailure="UKI/Initramfs package installation has failed."
 install efibootmgr ukify systemd-boot-efistub booster plymouth
 
-# Unbloat: Removed the manual symlink fallback. xbps-alternatives handles it natively.
-system "xbps-alternatives -s booster" || die "Failed to switch to booster"
+# FIX 3: Use explicit '-r /mnt' to ensure this runs on the target, not the live ISO
+xbps-alternatives -r /mnt -s booster || die "Failed to switch to booster"
 
 # --- PLYMOUTH CONFIGURATION ---
 commandFailure="Configuring Plymouth theme has failed."
 
-system "plymouth-set-default-theme spinner" || system "plymouth-set-default-theme text" || true
+# CRITICAL FIX: plymouth-set-default-theme modifies the Live ISO's /etc, NOT /mnt!
+# We must write the config directly to the target rootfs so booster sees it.
+mkdir -p /mnt/etc/plymouth || die
+cat <<EOF > /mnt/etc/plymouth/plymouthd.conf || die
+[Daemon]
+Theme=spinner
+EOF
+chmod 0644 /mnt/etc/plymouth/plymouthd.conf || die
 
 # Map the chosen GPU driver to the KMS module(s) Plymouth needs inside the
 # initramfs (booster requires them in modules_force_load when plymouth is on).
@@ -103,6 +112,11 @@ if [ "$libc" = "glibc" ]; then
 fi
 echo "$hostname" > /mnt/etc/hostname || die
 
+# FIX 4: Explicitly set permissions for files created via echo/sed.
+# This prevents the target system from inheriting the Live ISO's umask (which might be 077).
+chmod 0644 /mnt/etc/fstab /mnt/etc/kernel/cmdline /mnt/etc/hostname || true
+[ "$libc" = "glibc" ] && chmod 0644 /mnt/etc/locale.conf || true
+
 # --- NETWORK MANAGER HARDENING ---
 commandFailure="Configuring NetworkManager hardening failed."
 mkdir -p /mnt/etc/NetworkManager/conf.d || die
@@ -146,8 +160,9 @@ commandFailure="Configuring Doas and Firewall has failed."
 /usr/bin/install -Dm0400 "$KOID_FILES_DIR/doas.conf" /mnt/etc/doas.conf || die
 /usr/bin/install -Dm0400 "$KOID_FILES_DIR/nftables.conf" /mnt/etc/nftables.conf || die
 
-# Symlink sudo to doas inside the target system
-system "ln -sf /usr/bin/doas /usr/bin/sudo" || die
+# FIX 5: Use explicit /mnt paths instead of the 'system' wrapper to guarantee 
+# the symlink is created in the target rootfs, not the Live ISO.
+ln -sf doas /mnt/usr/bin/sudo || die
 
 # Enable the firewall service on boot
 enableService nftables
