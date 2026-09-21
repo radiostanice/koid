@@ -21,12 +21,12 @@ export LC_ALL=@LOCALE@
 export EDITOR=nano
 export VISUAL=nano
 
-# Function to intercept 'sudo nano' and use sudoedit instead
+# Function to intercept 'sudo nano' and use doasedit instead
 sudo() {
     if [[ "$1" == "nano" ]]; then
-        command sudoedit "${@:2}"
+        command doasedit "${@:2}"
     else
         command sudo "$@"
     fi
 }
-alias snano='sudoedit'
+alias snano='doasedit'
