@@ -239,10 +239,6 @@ securebootConfig() {
 # --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
-        "octoxbps" "OctoXBPS package manager" on
-        "kate" "KDE advanced text editor" on
-        "oxygen" "KDE theme - Recommended" on
-        "spectacle" "KDE screenshot capture utility" on
         "chromium" "Chromium web browser" off
         "firefox" "Firefox web browser" off
         "flatpak" "Flatpak package management" off
