@@ -243,8 +243,8 @@ appsConfig() {
         "kcalc" "KDE Calculator app" on
         "gwenview" "KDE Image viewer" on
         "kwrite" "KDE Text editor" on
-        "ktorrent" "KDE Bittorrent client" on
         "chromium" "Chromium web browser" on
+        "ktorrent" "KDE Bittorrent client" off
         "firefox" "Firefox web browser" off
         "kate" "KDE Advanced text editor" off
         "flatpak" "Flatpak package management" off
