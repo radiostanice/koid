@@ -176,16 +176,19 @@ status "Applying KDE Plasma hardened defaults..."
 commandFailure="Configuring KDE Plasma defaults has failed."
 KDE_CONFIG_DIR="/home/$username/.config"
 
-# FIX: Added -o and -g so KDE configs are owned by the user, not root!
+# FIX: Create the directories explicitly with correct ownership BEFORE using install
+/usr/bin/install -d -m 0755 -o "$username" -g "$username" "$KDE_CONFIG_DIR" "$KDE_CONFIG_DIR/KDE"
+
+# Now you can safely use install WITHOUT the -D flag (since dirs already exist)
 for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
-    /usr/bin/install -Dm644 -o "$username" -g "$username" "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
+    /usr/bin/install -m644 -o "$username" -g "$username" "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
 done
 
 # Sonnet spellcheck config
 kde_lang="${sys_locale%%.*}"
 [[ "$kde_lang" == "C" || "$kde_lang" == "POSIX" ]] && kde_lang="en_US"
 sed "s|@LANG@|${kde_lang}|g" /tmp/files/kde/Sonnet.conf > /tmp/Sonnet.conf || die
-/usr/bin/install -Dm644 -o "$username" -g "$username" /tmp/Sonnet.conf "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
+/usr/bin/install -m644 -o "$username" -g "$username" /tmp/Sonnet.conf "$KDE_CONFIG_DIR/KDE/Sonnet.conf" || die
 rm -f /tmp/Sonnet.conf
 
 # ===================
