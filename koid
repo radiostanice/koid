@@ -12,7 +12,7 @@ trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
 drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
 
-# --- 0. KEYMAP SELECTION ---
+# --- 1. KEYMAP SELECTION ---
 keymapConfig() {
     local keymaps keymapArray keymap_choice
     
@@ -47,7 +47,7 @@ keymapConfig() {
 # Start the flow
 keymapConfig
 
-# --- 1. DISK SELECTION ---
+# --- 2. DISK SELECTION ---
 diskConfig() {
     local diskArray=() name size
     while read -r name size; do
@@ -66,7 +66,7 @@ diskConfig() {
     userConfig
 }
 
-# --- 2. USER & HOSTNAME ---
+# --- 3. USER & HOSTNAME ---
 userConfig() {
     while :; do
         username=$(drawDialogBack --nocancel --title "Create User" --inputbox \
@@ -97,7 +97,7 @@ userConfig() {
     timezoneConfig
 }
 
-# --- 3. DYNAMIC TIMEZONE ---
+# --- 4. DYNAMIC TIMEZONE ---
 timezoneConfig() {
     local areas=(Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific)
     local menu_args=() a
@@ -128,7 +128,7 @@ timezoneConfig() {
     localeConfig
 }
 
-# --- 4. DYNAMIC LOCALE ---
+# --- 5. DYNAMIC LOCALE ---
 localeConfig() {
     local localeList tmp=() i localeChoice
     localeList=$(grep -F '.UTF-8' /etc/default/libc-locales | awk '{print $1}' | sed -e 's/^#//' | sort -u)
@@ -143,7 +143,7 @@ localeConfig() {
     repositoryConfig
 }
 
-# --- 5. REPOSITORY MIRROR ---
+# --- 6. REPOSITORY MIRROR ---
 repositoryConfig() {
     drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 0
     ret=$?
@@ -161,7 +161,7 @@ repositoryConfig() {
     kernelParamsConfig
 }
 
-# --- 7.1 KERNEL SECURITY PRESETS ---
+# --- 7 KERNEL SECURITY PRESETS ---
 kernelParamsConfig() {
     local BASE_PARAMS="rw quiet loglevel=3 splash"
     
@@ -198,7 +198,7 @@ kernelParamsConfig() {
     gpuConfig
 }
 
-# --- 9. GPU SELECTION ---
+# --- 8. GPU SELECTION ---
 gpuConfig() {
     graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:\n(Note: Auto-detect can be inaccurate in VMs)" 0 0 6 \
     "auto" "- Auto-detect (lspci)" \
@@ -226,7 +226,7 @@ gpuConfig() {
     securebootConfig
 }
 
-# --- 10. SECURE BOOT ---
+# --- 9. SECURE BOOT ---
 securebootConfig() {
     drawDialogBack --title "Secure Boot" --yesno "Do you want to generate Secure Boot keys and sign the kernel?\n\nThis installs 'sbctl' and adds a kernel hook to automatically sign kernels on updates." 0 0
     ret=$?
@@ -236,7 +236,7 @@ securebootConfig() {
     appsConfig
 }
 
-# --- 11. ADDITIONAL APPLICATIONS CHECKLIST ---
+# --- 10. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
         "elisa" "KDE Music player" on
@@ -267,7 +267,7 @@ appsConfig() {
     confirm
 }
 
-# --- 12. CONFIRMATION ---
+# --- 11. CONFIRMATION ---
 confirm() {
     local settings="Target disk: $diskInput (WILL BE WIPED)\n"
     settings+="Hostname: $hostname\n"
