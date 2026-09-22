@@ -9,5 +9,5 @@ if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
     export XDG_SESSION_TYPE=wayland
     export XDG_CURRENT_DESKTOP=KDE
     export QT_QPA_PLATFORM=wayland
-    exec dbus-run-session startplasma-wayland
+    exec dbus-run-session startplasma-wayland >/dev/null 2>&1
 fi
