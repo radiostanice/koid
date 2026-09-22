@@ -139,23 +139,29 @@ fi
 
 # local is removed because this file is sourced at top-level scope
 crypt_options=("--type" "luks2" "--batch-mode" "--verify-passphrase" "--pbkdf" "argon2id")
-if [ "$is_ssd" -eq 1 ]; then
-    crypt_options+=("--allow-discards")
+
+# Bounded retry instead of an infinite loop
+if ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; then
+    commandFailure="Encrypting partition has failed."
+    die
 fi
 
-    while ! cryptsetup luksFormat "${crypt_options[@]}" "$root"; do :; done
+status "Opening encrypted partition..."
+open_options=()
+if [ "$is_ssd" -eq 1 ]; then
+    # --persistent writes allow-discards into the LUKS2 header,
+    # so booster/crypttab opens get TRIM automatically later
+    open_options+=("--allow-discards" "--persistent")
+fi
 
-    status "Opening encrypted partition..."
-    # Bounded retries: an infinite loop here spins forever on non-passphrase
-    # errors like "Device void_root already exists."
-    for attempt in 1 2 3; do
-        cryptsetup luksOpen "$root" void_root && break
-        if [ "$attempt" -eq 3 ]; then
-            commandFailure="Opening the LUKS container failed."
-            die
-        fi
-        status "Failed to open LUKS container, retrying ($attempt/3)..." "$YELLOW"
-    done
+for attempt in 1 2 3; do
+    cryptsetup open --type luks2 "${open_options[@]}" "$root" void_root && break
+    if [ "$attempt" -eq 3 ]; then
+        commandFailure="Opening the LUKS container failed."
+        die
+    fi
+    status "Failed to open LUKS container, retrying ($attempt/3)..." "$YELLOW"
+done
 
     format_target="/dev/mapper/void_root"
 
