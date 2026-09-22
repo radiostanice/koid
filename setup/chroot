@@ -163,6 +163,9 @@ sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /tmp/bashrc.tmp || die
 /usr/bin/install -Dm644 -o "$username" -g "$username" /tmp/files/bash_profile "/home/$username/.bash_profile" || die
 rm -f /tmp/bashrc.tmp
 
+# Lock user shell configs
+chattr +i /home/"$username"/.bashrc /home/"$username"/.bash_profile || die
+
 # --- TTY CONFIGURATION ---
 sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /tmp/agetty-tty1.conf.tmp || die
 /usr/bin/install -Dm644 /tmp/agetty-tty1.conf.tmp /etc/sv/agetty-tty1/conf || die
