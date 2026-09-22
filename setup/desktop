@@ -50,7 +50,7 @@ install kwin xorg-server-xwayland
 install elogind polkit-elogind dbus kf6-kded
 
 # Plasma-specific integrations for audio and network system tray widgets, the default sound theme, and power profile management
-install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon xdg-desktop-portal-kde
+install plasma-pa plasma-nm ocean-sound-theme power-profiles-daemon xdg-desktop-portal-kde kscreen
 
 # --- GTK CONFIGURATION & THEMES ---
 install kde-gtk-config breeze-gtk gtk-engine-murrine
