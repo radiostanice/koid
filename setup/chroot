@@ -163,9 +163,6 @@ sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /tmp/bashrc.tmp || die
 /usr/bin/install -Dm644 -o "$username" -g "$username" /tmp/files/bash_profile "/home/$username/.bash_profile" || die
 rm -f /tmp/bashrc.tmp
 
-# NOTE: I removed `chattr +i` from user dotfiles. Locking them prevents the 
-# user from adding custom aliases or modifying their PATH without root intervention.
-
 # --- TTY CONFIGURATION ---
 sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /tmp/agetty-tty1.conf.tmp || die
 /usr/bin/install -Dm644 /tmp/agetty-tty1.conf.tmp /etc/sv/agetty-tty1/conf || die
@@ -176,11 +173,10 @@ status "Applying KDE Plasma hardened defaults..."
 commandFailure="Configuring KDE Plasma defaults has failed."
 KDE_CONFIG_DIR="/home/$username/.config"
 
-# FIX: Create the directories explicitly with correct ownership BEFORE using install
 /usr/bin/install -d -m 0755 -o "$username" -g "$username" "$KDE_CONFIG_DIR" "$KDE_CONFIG_DIR/KDE"
 
 # Now you can safely use install WITHOUT the -D flag (since dirs already exist)
-for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc; do
+for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc kactivitymanagerd-pluginsrc; do
     /usr/bin/install -m644 -o "$username" -g "$username" "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
 done
 
