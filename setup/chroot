@@ -6,6 +6,11 @@
 exitFunction () {
     xbps-reconfigure -fa || { commandFailure="xbps-reconfigure failed."; die; }
 
+    # Remove unused TTYs (3-6) 
+    for service in agetty-tty{3..6}; do
+        rm -f /etc/runit/runsvdir/default/"$service"
+    done
+
     # --- SECURE DNS: ownership + DNSSEC root key ---
     if command -v unbound-anchor >/dev/null 2>&1; then
         chown -R _unbound:_unbound /etc/unbound /var/lib/unbound || true
@@ -165,11 +170,6 @@ rm -f /tmp/bashrc.tmp
 sed "s|@USERNAME@|$username|g" /tmp/files/agetty-tty1.conf > /tmp/agetty-tty1.conf.tmp || die
 /usr/bin/install -Dm644 /tmp/agetty-tty1.conf.tmp /etc/sv/agetty-tty1/conf || die
 rm -f /tmp/agetty-tty1.conf.tmp
-
-# Remove unused TTYs (3-6) for faster boot
-for service in agetty-tty{3..6}; do
-    rm -fv /var/service/"$service" 2>/dev/null || true
-done
 
 # --- KDE PLASMA HARDENED DEFAULTS ---
 status "Applying KDE Plasma hardened defaults..."
