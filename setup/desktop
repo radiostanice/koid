@@ -7,26 +7,20 @@ graphicsArray=($graphics)
 for i in "${graphicsArray[@]}"; do
     case $i in
         amd)
-            install mesa-dri vulkan-loader mesa-vulkan-radeon mesa-vaapi
+            install mesa-dri vulkan-loader mesa-vulkan-radeon mesa-vaapi linux-firmware-amd
             ;;
         intel)
-            install mesa-dri vulkan-loader mesa-vulkan-intel intel-video-accel mesa-vaapi
+            # intel-video-accel includes both modern and legacy VA-API drivers
+            install mesa-dri vulkan-loader mesa-vulkan-intel intel-video-accel linux-firmware-intel
             ;;
         nvidia)
-            install void-repo-nonfree
-            # Hardcoded to linux-lts
-            install nvidia-lts
+            install void-repo-nonfree nvidia-lts
             setKernelParam "nvidia_drm.modeset=1"
             ;;
         nvidia-nouveau)
             install mesa-dri mesa-nouveau-dri
             ;;
-        none|auto)
-            # Generic fallback, usually sufficient for VMs (virtio, qxl, vmware) or unknown hardware
-            install mesa-dri
-            ;;
-        *)
-            echo "Unknown graphics option: $i, installing generic mesa-dri..."
+        none|*)
             install mesa-dri
             ;;
     esac
