@@ -211,16 +211,24 @@ gpuConfig() {
     if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
     
     if [ "$graphics" = "auto" ]; then
-        local gpu_info
+        local gpu_info graphics_list=""
         gpu_info=$(lspci -nn | grep -Ei "vga|3d|display")
+        
+        # Detect all GPUs for hybrid systems (e.g., Intel + Nvidia)
         if echo "$gpu_info" | grep -qi "nvidia"; then
-            graphics="nvidia"
-        elif echo "$gpu_info" | grep -Eiq "radeon|amd|ati"; then
-            graphics="amd"
-        elif echo "$gpu_info" | grep -qi "intel"; then
-            graphics="intel"
-        else
+            graphics_list="nvidia"
+        fi
+        if echo "$gpu_info" | grep -Eiq "radeon|amd|ati"; then
+            graphics_list="${graphics_list:+$graphics_list }amd"
+        fi
+        if echo "$gpu_info" | grep -qi "intel"; then
+            graphics_list="${graphics_list:+$graphics_list }intel"
+        fi
+        
+        if [ -z "$graphics_list" ]; then
             graphics="none"
+        else
+            graphics="$graphics_list"
         fi
     fi
     securebootConfig
