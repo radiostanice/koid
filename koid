@@ -212,16 +212,21 @@ gpuConfig() {
     
     if [ "$graphics" = "auto" ]; then
         local gpu_info graphics_list=""
-        gpu_info=$(lspci -nn | grep -Ei "vga|3d|display")
         
-        # Detect all GPUs for hybrid systems (e.g., Intel + Nvidia)
-        if echo "$gpu_info" | grep -qi "nvidia"; then
+        # Get all display controllers using numeric class codes (0300, 0302, 0380)
+        gpu_info=$(lspci -n | grep -E "0300|0302|0380")
+        
+        # Show what it found so you can verify it caught the i5-14400
+        drawDialog --msgbox "Auto-detection found:\n\n$gpu_info" 12 60
+        
+        # Detect by Vendor ID (100% reliable, ignores outdated text names)
+        if echo "$gpu_info" | grep -q "10de:"; then
             graphics_list="nvidia"
         fi
-        if echo "$gpu_info" | grep -Eiq "radeon|amd|ati"; then
+        if echo "$gpu_info" | grep -q "1002:"; then
             graphics_list="${graphics_list:+$graphics_list }amd"
         fi
-        if echo "$gpu_info" | grep -qi "intel"; then
+        if echo "$gpu_info" | grep -q "8086:"; then
             graphics_list="${graphics_list:+$graphics_list }intel"
         fi
         
