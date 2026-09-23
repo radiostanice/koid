@@ -89,6 +89,16 @@ if echo "$extra_packages" | grep -qw "blueman"; then
     enableService bluetoothd
 fi
 
+if echo "$extra_packages" | grep -qw "virt-manager"; then
+    for svc in virtlockd virtlogd libvirtd; do
+        [ -d "/mnt/etc/sv/$svc" ] && enableService "$svc"
+    done
+fi
+
+if echo "$extra_packages" | grep -Eq '(^|[[:space:]])libreoffice(-|$)'; then
+    install libreoffice-qt6 libreoffice-kde
+fi
+
 # --- AUDIO SERVER ---
 commandFailure="Audio server installation has failed."
 install pipewire wireplumber alsa-pipewire
