@@ -252,31 +252,70 @@ securebootConfig() {
 # --- 10. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
+        "kde_sep" "─────── KDE APPS ───────" off
         "elisa" "KDE Music player" on
         "kcalc" "KDE Calculator app" on
         "gwenview" "KDE Image viewer" on
         "kwrite" "KDE Text editor" on
-        "chromium" "Chromium web browser" on
+        "okular" "KDE Document viewer" off
         "ktorrent" "KDE Bittorrent client" off
-        "firefox" "Firefox web browser" off
         "kate" "KDE Advanced text editor" off
+        "sys_sep" "──── SYSTEM & PRODUCTIVITY ────" off
+        "chromium" "Chromium web browser" on
+        "firefox" "Firefox web browser" off
+        "virt-manager" "Virtual Machine Manager (KVM/QEMU)" off
+        "libreoffice" "LibreOffice (Choose components)" off
         "flatpak" "Flatpak package management" off
         "htop" "System monitor" off
         "blueman" "Bluetooth GUI manager" off
         "cups" "CUPS printing support" off
     )
 
-    selected=$(drawDialogBack --no-cancel --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "${apps_list[@]}")
+    # Use --no-items to hide the dummy separator tags for a cleaner UI
+    selected=$(drawDialogBack --no-cancel --no-items --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "${apps_list[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then securebootConfig; return; fi
     
-    extra_packages=$(echo "$selected" | tr -d '"')
+    # Strip the dummy separator tags from the returned string
+    extra_packages=$(echo "$selected" | tr -d '"' | tr ' ' '\n' | grep -vE '^(kde_sep|sys_sep)$' | tr '\n' ' ')
 
     if [ -n "$extra_packages" ]; then
         drawDialog --title "Selected Packages" --msgbox "The following packages will be installed:\n\n$extra_packages" 0 0
     else
         drawDialog --title "Selected Packages" --msgbox "No additional packages were selected." 0 0
     fi
+
+    # Virt-manager needs underlying dependencies to function
+    if echo "$extra_packages" | grep -qw "virt-manager"; then
+        extra_packages="$extra_packages libvirt qemu dnsmasq bridge-utils"
+    fi
+
+    # LibreOffice Tree-like sub-menu
+    if echo "$extra_packages" | grep -qw "libreoffice"; then
+        local lo_list=(
+            "libreoffice-writer" "Writer (Word processor)" on
+            "libreoffice-calc" "Calc (Spreadsheet)" off
+            "libreoffice-impress" "Impress (Presentations)" off
+            "libreoffice-draw" "Draw (Vector graphics)" off
+            "libreoffice-base" "Base (Database)" off
+            "libreoffice-math" "Math (Formula editor)" off
+        )
+        
+        # Show the sub-menu
+        lo_selected=$(drawDialogBack --no-cancel --no-items --title "LibreOffice Components" --checklist "Select LibreOffice apps to install:" 0 0 0 "${lo_list[@]}")
+        ret=$?
+        
+        # If the user presses ESC to go back
+        if [ $ret -eq 3 ]; then appsConfig; return; fi
+        
+        # Clean up the returned string (remove quotes and newlines)
+        lo_clean=$(echo "$lo_selected" | tr -d '"' | tr '\n' ' ' | xargs)
+        
+        # Replace the base "libreoffice" tag with the specifically chosen apps
+        extra_packages=$(echo "$extra_packages" | sed -E 's/\blibreoffice\b//g' | xargs)
+        extra_packages="$extra_packages $lo_clean"
+    fi
+
     confirm
 }
 
