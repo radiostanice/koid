@@ -365,6 +365,7 @@ diskInput=${diskInput@Q}
 username=${username@Q}
 secureboot=${secureboot@Q}
 locale=${locale@Q}
+extra_packages=${extra_packages@Q}
 EOF
     . "$(pwd)"/setup/base
     . "$(pwd)"/setup/desktop
