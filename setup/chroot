@@ -155,7 +155,11 @@ chattr +i /etc/nftables.conf /etc/doas.conf /etc/chrony.conf \
 # =========================================================================
 
 useradd "$username" -m -d /home/"$username" || die
-usermod -aG audio,video,kvm,wheel "$username" || die
+if echo "$extra_packages" | grep -qw "virt-manager"; then
+    usermod -aG audio,video,kvm,wheel,libvirt "$username" || die
+else
+    usermod -aG audio,video,kvm,wheel "$username" || die
+fi
 
 # Use /usr/bin/install to cleanly set ownership and permissions in one step
 sed "s/@LOCALE@/${sys_locale}/g" /tmp/files/bashrc > /tmp/bashrc.tmp || die
