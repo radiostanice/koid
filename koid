@@ -33,7 +33,7 @@ keymapConfig() {
         keymapArray+=("$k" "")
     done
 
-    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 0  "${keymapArray[@]}")
+    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 0 0 "${keymapArray[@]}")
     
     if [ -n "$keymap_choice" ]; then
         keymap="$keymap_choice"
