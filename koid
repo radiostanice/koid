@@ -296,27 +296,26 @@ appsConfig() {
     # LibreOffice Tree-like sub-menu
     if echo "$extra_packages" | grep -qw "libreoffice"; then
         local lo_list=(
-            "libreoffice-writer" "Writer (Word processor)" on
-            "libreoffice-calc" "Calc (Spreadsheet)" off
-            "libreoffice-impress" "Impress (Presentations)" off
-            "libreoffice-draw" "Draw (Vector graphics)" off
-            "libreoffice-base" "Base (Database)" off
-            "libreoffice-math" "Math (Formula editor)" off
+            "libreoffice-writer"  "Writer  (Word processor)" on
+            "libreoffice-calc"    "Calc    (Spreadsheet)"    off
+            "libreoffice-impress" "Impress (Presentations)"  off
+            "libreoffice-draw"    "Draw    (Vector graphics)" off
+            "libreoffice-math"    "Math    (Formula editor)"  off
+            "libreoffice-base"    "Base    (Database)"        off
         )
-        
-        # Show the sub-menu
-        lo_selected=$(drawDialogBack --no-cancel --no-items --title "LibreOffice Components" --checklist "Select LibreOffice apps to install:" 0 0 0 "${lo_list[@]}")
+
+        # NO --no-items here: it makes dialog misparse (tag,status) pairs
+        lo_selected=$(drawDialogBack --no-cancel --title "LibreOffice Components" \
+            --checklist "Select LibreOffice apps to install:" 0 0 0 "${lo_list[@]}")
         ret=$?
-        
-        # If the user presses ESC to go back
         if [ $ret -eq 3 ]; then appsConfig; return; fi
-        
-        # Clean up the returned string (remove quotes and newlines)
-        lo_clean=$(echo "$lo_selected" | tr -d '"' | tr '\n' ' ' | xargs)
-        
-        # Replace the base "libreoffice" tag with the specifically chosen apps
-        extra_packages=$(echo "$extra_packages" | sed -E 's/\blibreoffice\b//g' | xargs)
-        extra_packages="$extra_packages $lo_clean"
+
+        lo_clean=$(tr -d '"' <<<"$lo_selected" | xargs)
+        extra_packages=$(sed -E 's/\blibreoffice\b//g' <<<"$extra_packages" | xargs)
+
+        # Core split packages every component needs (we intentionally skip the
+        # 'libreoffice' metapackage so base/gnome/postgresql stay optional)
+        extra_packages="$extra_packages libreoffice-common libreoffice-xtensions libreoffice-fonts $lo_clean"
     fi
 
     confirm
