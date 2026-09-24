@@ -10,7 +10,7 @@
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
-drawDialog --title "Welcome" --msgbox "Welcome to the Koid Linux Installer\n\nThis script will guide you through installing a custom, security-focused Void Linux setup.\n\nYour system will be configured with:\n• KDE Plasma (Wayland Session)\n• Btrfs Filesystem (with optimized mount options)\n• Full LUKS2 Disk Encryption\n• Unified Kernel Image (UKI) Bootloader\n• PipeWire Audio\n• NetworkManager (with MAC Randomization)\n\n⚠ WARNING: The entire target drive will be completely wiped and reformatted.\nNo changes will be made to your disk until you reach the final confirmation." 0 0
+drawDialog --title "Welcome to Koid Linux" --msgbox "Welcome!\n\nThis installer will guide you through setting up a modern, secure, and privacy-focused KDE Plasma desktop.\n\nWe've done the heavy lifting under the hood so you get a fast, reliable, and ready-to-use system out of the box.\n\nPlease ensure you have backed up any important data. The installation will guide you step-by-step, and you will be asked for a final confirmation before any changes are made to your drives.\n\nPress ENTER to begin." 0 0
 
 # --- 1. KEYMAP SELECTION ---
 keymapConfig() {
@@ -51,29 +51,14 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    while true; do
-        # Changed to drawDialogBack to allow returning to keymapConfig
-        diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 0 0 "${diskArray[@]}")
-        ret=$?
-        
-        # If user presses the "Back" button (return code 3)
-        if [ $ret -eq 3 ]; then
-            keymapConfig
-            return
-        # If user presses ESC or Cancel (return code 1 or 255)
-        elif [ $ret -ne 0 ] || [ -z "$diskInput" ]; then
-            exit 0
-        fi
-        
+    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 0 0 "${diskArray[@]}")
+    ret=$?
+    if [ $ret -eq 3 ]; then keymapConfig; return
+    elif [ -n "$diskInput" ]; then
         diskInput="/dev/$diskInput"
-        
-        # --- NEW EXPLICIT WIPE CONFIRMATION ---
-        # Using --defaultno requires the user to actively select "Yes" to proceed
-        if drawDialog --defaultno --title "WARNING: DATA LOSS" --yesno "ALL DATA on '$diskInput' WILL BE PERMANENTLY ERASED AND OVERWRITTEN.\n\nAre you absolutely sure you want to select this drive?" 0 0; then
-            break
-        fi
-    done
-
+    else
+        exit 0
+    fi
     userConfig
 }
 
@@ -332,7 +317,7 @@ appsConfig() {
 
 # --- 11. CONFIRMATION ---
 confirm() {
-    local settings="Target disk: $diskInput (WILL BE WIPED)\n"
+    local settings="Target disk: $diskInput\n"
     settings+="Hostname: $hostname\n"
     settings+="User: $username\n"
     settings+="Timezone: $timezone\n"
@@ -343,7 +328,7 @@ confirm() {
     [ -n "$KERN_PARAMS" ] && settings+="Kernel Params: $KERN_PARAMS\n"
     [ -n "$extra_packages" ] && settings+="Extra Apps: $extra_packages\n"
     
-    drawDialogBack --yes-label "Install" --no-label "Exit" --title "Installation Overview" --yesno "Selecting 'Install' will DESTROY ALL DATA on $diskInput and proceed with these options:\n\n$settings" 0 0
+    drawDialogBack --defaultno --title "FINAL CONFIRMATION" --yes-label "Install & Wipe Disk" --no-label "Cancel" --yesno "WARNING: DESTROY ALL DATA\n\nSelecting 'Install' will PERMANENTLY ERASE the entire contents of:\n\n>>> $diskInput <<<\n\nOnce you proceed, this cannot be undone. Are you absolutely sure you want to install Koid Linux with the following settings?\n\n$settings" 0 0
     ret=$?
     if [ $ret -eq 3 ]; then appsConfig; return
     elif [ $ret -eq 0 ]; then _install
