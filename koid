@@ -303,19 +303,17 @@ appsConfig() {
             "libreoffice-math"    "Math    (Formula editor)"  off
             "libreoffice-base"    "Base    (Database)"        off
         )
-
-        # NO --no-items here: it makes dialog misparse (tag,status) pairs
+    
         lo_selected=$(drawDialogBack --no-cancel --title "LibreOffice Components" \
             --checklist "Select LibreOffice apps to install:" 0 0 0 "${lo_list[@]}")
         ret=$?
         if [ $ret -eq 3 ]; then appsConfig; return; fi
-
+    
         lo_clean=$(tr -d '"' <<<"$lo_selected" | xargs)
+        
+        # Replace the meta tag with component tags
         extra_packages=$(sed -E 's/\blibreoffice\b//g' <<<"$extra_packages" | xargs)
-
-        # Core split packages every component needs (we intentionally skip the
-        # 'libreoffice' metapackage so base/gnome/postgresql stay optional)
-        extra_packages="$extra_packages libreoffice-common libreoffice-xtensions libreoffice-fonts $lo_clean"
+        extra_packages="$extra_packages $lo_clean"
     fi
 
     confirm
