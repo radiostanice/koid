@@ -141,7 +141,7 @@ localeConfig() {
 
 # --- 6. REPOSITORY MIRROR ---
 repositoryConfig() {
-    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 70
+    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 20 70
     ret=$?
     if [ $ret -eq 3 ]; then localeConfig; return
     elif [ $ret -eq 0 ]; then
