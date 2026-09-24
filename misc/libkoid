@@ -80,13 +80,6 @@ drawDialogBack() {
     dialog --stdout --no-mouse --backtitle "Koid Linux Installer" --extra-button --extra-label "Back" "$@"
 }
 
-listRows() {
-    local n=${1:-0} min=${2:-4} max=${3:-12}
-    [ "$n" -lt "$min" ] && n=$min
-    [ "$n" -gt "$max" ] && n=$max
-    printf '%s' "$n"
-}
-
 install() {
     xbps-install -Sy -R "$repository" -r /mnt "$@" || die "Failed to install package(s): $*"
 }
