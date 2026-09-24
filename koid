@@ -200,7 +200,7 @@ kernelParamsConfig() {
 
 # --- 8. GPU SELECTION ---
 gpuConfig() {
-    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:\n(Note: Auto-detect can be inaccurate in VMs)" 0 0 6 \
+    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:" 0 0 6 \
     "auto" "- Auto-detect (lspci)" \
     "amd" "- AMD / Radeon" \
     "intel" "- Intel" \
@@ -209,32 +209,37 @@ gpuConfig() {
     "none" "- Generic / VM Display (virtio, qxl, vmware)")
     ret=$?
     if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
-    
-    if [ "$graphics" = "auto" ]; then
-        local gpu_info graphics_list=""
-        
-        # Get all display controllers using numeric class codes (0300, 0302, 0380)
-        gpu_info=$(lspci -n | grep -E "0300|0302|0380")
-        
-        # Show what it found so you can verify it caught the i5-14400
-        drawDialog --msgbox "Auto-detection found:\n\n$gpu_info" 12 60
-        
-        # Detect by Vendor ID (100% reliable, ignores outdated text names)
-        if echo "$gpu_info" | grep -q "10de:"; then
-            graphics_list="nvidia"
-        fi
-        if echo "$gpu_info" | grep -q "1002:"; then
-            graphics_list="${graphics_list:+$graphics_list }amd"
-        fi
-        if echo "$gpu_info" | grep -q "8086:"; then
-            graphics_list="${graphics_list:+$graphics_list }intel"
-        fi
-        
-        if [ -z "$graphics_list" ]; then
-            graphics="none"
-        else
-            graphics="$graphics_list"
-        fi
+    if [ "$graphics" != "auto" ]; then securebootConfig; return; fi
+
+    local ids id drivers="" vgpu="" pretty
+    ids=$(lspci -n  | awk '$2 ~ /^03(00|02|80):/ {print $3}')      # 0300 VGA, 0302 3D, 0380 other
+    pretty=$(lspci -nn | awk '/\[03(00|02|80)\]:/ {print "  " $0}') # names + [vendor:device]
+
+    for id in $ids; do
+        case "$id" in
+            10de:*)              drivers="${drivers:+$drivers }nvidia" ;;
+            1002:*)              drivers="${drivers:+$drivers }amd" ;;
+            8086:*)              drivers="${drivers:+$drivers }intel" ;;
+            1b36:0100)           vgpu="${vgpu:+$vgpu, }QXL (QEMU paravirtual GPU)" ;;
+            1af4:1050|1af4:1000) vgpu="${vgpu:+$vgpu, }VirtIO-GPU" ;;
+            1234:1111)           vgpu="${vgpu:+$vgpu, }QEMU standard VGA (bochs)" ;;
+            15ad:0405)           vgpu="${vgpu:+$vgpu, }VMware SVGA" ;;
+            1013:00b8)           vgpu="${vgpu:+$vgpu, }Cirrus VGA (legacy VM)" ;;
+        esac
+    done
+
+    if [ -n "$drivers" ]; then
+        graphics="$drivers"
+        drawDialog --title "GPU Auto-Detection" --msgbox \
+            "Detected display hardware:\n\n$pretty\n\nDriver selection: $drivers" 0 0
+    elif [ -n "$vgpu" ]; then
+        graphics="none"
+        drawDialog --title "GPU Auto-Detection" --msgbox \
+            "Virtual GPU detected: $vgpu\n\n$pretty\n\nThis is expected inside a VM.\nUsing 'none': mesa-dri + the in-kernel\nmodesetting/qxl/virtio-gpu driver is all that is needed." 0 0
+    else
+        graphics="none"
+        drawDialog --title "GPU Auto-Detection" --msgbox \
+            "No known GPU vendor matched.\n\n$pretty\n\nFalling back to 'none' (mesa-dri)." 0 0
     fi
     securebootConfig
 }
@@ -252,32 +257,30 @@ securebootConfig() {
 # --- 10. ADDITIONAL APPLICATIONS CHECKLIST ---
 appsConfig() {
     local apps_list=(
-        "kde_sep" "─────── KDE APPS ───────" off
-        "elisa" "KDE Music player" on
-        "kcalc" "KDE Calculator app" on
-        "gwenview" "KDE Image viewer" on
-        "kwrite" "KDE Text editor" on
-        "okular" "KDE Document viewer" off
-        "ktorrent" "KDE Bittorrent client" off
-        "kate" "KDE Advanced text editor" off
-        "sys_sep" "──── SYSTEM & PRODUCTIVITY ────" off
-        "chromium" "Chromium web browser" on
-        "firefox" "Firefox web browser" off
-        "virt-manager" "Virtual Machine Manager (KVM/QEMU)" off
-        "libreoffice" "LibreOffice (Choose components)" off
-        "flatpak" "Flatpak package management" off
-        "htop" "System monitor" off
-        "blueman" "Bluetooth GUI manager" off
-        "cups" "CUPS printing support" off
+        "elisa"        "KDE    | Elisa music player"               on
+        "kcalc"        "KDE    | Calculator"                       on
+        "gwenview"     "KDE    | Image viewer"                     on
+        "kwrite"       "KDE    | Simple text editor"               on
+        "okular"       "KDE    | Document viewer"                  off
+        "kate"         "KDE    | Advanced text editor"             off
+        "ktorrent"     "KDE    | BitTorrent client"                off
+        "chromium"     "Web    | Chromium browser"                 on
+        "firefox"      "Web    | Firefox browser"                  off
+        "libreoffice"  "Office | LibreOffice (component sub-menu)" off
+        "flatpak"      "System | Flatpak package management"       off
+        "htop"         "System | htop process monitor"             off
+        "blueman"      "System | Bluetooth manager (bluez)"        off
+        "cups"         "System | CUPS printing support"            off
+        "virt-manager" "System | virt-manager (KVM/QEMU)"          off
     )
 
-    # Use --no-items to hide the dummy separator tags for a cleaner UI
-    selected=$(drawDialogBack --no-cancel --no-items --title "Additional Applications" --checklist "Select optional packages to install (Space to select, Enter to confirm):" 0 0 0 "${apps_list[@]}")
+    selected=$(drawDialogBack --no-cancel --title "Additional Applications" \
+        --checklist "Select optional packages (Space toggles, Enter confirms):" 0 0 0 \
+        "${apps_list[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then securebootConfig; return; fi
-    
-    # Strip the dummy separator tags from the returned string
-    extra_packages=$(echo "$selected" | tr -d '"' | tr ' ' '\n' | grep -vE '^(kde_sep|sys_sep)$' | tr '\n' ' ')
+
+    extra_packages=$(tr -d '"' <<<"$selected" | xargs)   # checklist prints: "tag1" "tag2"
 
     if [ -n "$extra_packages" ]; then
         drawDialog --title "Selected Packages" --msgbox "The following packages will be installed:\n\n$extra_packages" 0 0
