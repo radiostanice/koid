@@ -10,7 +10,7 @@
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
-drawDialog --title "Welcome to Koid Linux" --msgbox "Welcome!\n\nThis installer will guide you through setting up a modern, secure, and privacy-focused KDE Plasma desktop.\n\nWe've done the heavy lifting under the hood so you get a fast, reliable, and ready-to-use system out of the box.\n\nPlease ensure you have backed up any important data. The installation will guide you step-by-step, and you will be asked for a final confirmation before any changes are made to your drives.\n\nPress ENTER to begin." 0 70
+drawDialog --title "Welcome to Koid Linux" --msgbox "Welcome!\n\nThis installer will guide you through setting up a modern, secure, and privacy-focused KDE Plasma desktop.\n\nWe've done the heavy lifting under the hood so you get a fast, reliable, and ready-to-use system out of the box.\n\nPlease ensure you have backed up any important data. The installation will guide you step-by-step, and you will be asked for a final confirmation before any changes are made to your drives.\n\nPress ENTER to begin." 220 70
 
 # --- 1. KEYMAP SELECTION ---
 keymapConfig() {
@@ -33,7 +33,7 @@ keymapConfig() {
         keymapArray+=("$k" "")
     done
 
-    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 70 12 "${keymapArray[@]}")
+    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 20 70 12 "${keymapArray[@]}")
     
     if [ -n "$keymap_choice" ]; then
         keymap="$keymap_choice"
@@ -51,7 +51,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 70 8 "${diskArray[@]}")
+    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 20 70 8 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then keymapConfig; return
     elif [ -n "$diskInput" ]; then
@@ -66,7 +66,7 @@ diskConfig() {
 userConfig() {
     while :; do
         username=$(drawDialogBack --nocancel --title "Create User" --inputbox \
-            "Enter your username:\n(lowercase letters, digits, '-' and '_';\nmust start with a letter or '_')" 0 70 "${username:-user}")
+            "Enter your username:\n(lowercase letters, digits, '-' and '_';\nmust start with a letter or '_')" 20 70 "${username:-user}")
         ret=$?
         if [ $ret -eq 1 ]; then exit 0
         elif [ $ret -eq 3 ]; then diskConfig; return; fi
@@ -75,12 +75,12 @@ userConfig() {
         if [[ "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
             break
         fi
-        drawDialog --title "Invalid Username" --msgbox "Invalid username: '${username:-<empty>}'.\n\nThe field is pre-filled with a safe default ('user').\nPress OK on it to accept, or type a valid name:\n- starts with a lowercase letter or '_'\n- then lowercase letters, digits, '-' or '_'" 0 70
+        drawDialog --title "Invalid Username" --msgbox "Invalid username: '${username:-<empty>}'.\n\nThe field is pre-filled with a safe default ('user').\nPress OK on it to accept, or type a valid name:\n- starts with a lowercase letter or '_'\n- then lowercase letters, digits, '-' or '_'" 20 70
     done
 
     while :; do
         hostname=$(drawDialogBack --nocancel --title "System Hostname" --inputbox \
-            "Enter your system hostname:\n(letters, digits, '-' and '_'; no spaces or dots)" 0 70 "${hostname:-localhost}")
+            "Enter your system hostname:\n(letters, digits, '-' and '_'; no spaces or dots)" 20 70 "${hostname:-localhost}")
         ret=$?
         if [ $ret -eq 1 ]; then exit 0
         elif [ $ret -eq 3 ]; then diskConfig; return; fi
@@ -88,7 +88,7 @@ userConfig() {
         if [[ "$hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$ ]]; then
             break
         fi
-        drawDialog --title "Invalid Hostname" --msgbox "Invalid hostname: '${hostname:-<empty>}'.\n\nUse 1-63 characters: letters, digits, '-' or '_',\nstarting and ending with a letter or digit.\nThe field is pre-filled with the default ('localhost')." 0 70
+        drawDialog --title "Invalid Hostname" --msgbox "Invalid hostname: '${hostname:-<empty>}'.\n\nUse 1-63 characters: letters, digits, '-' or '_',\nstarting and ending with a letter or digit.\nThe field is pre-filled with the default ('localhost')." 20 70
     done
     timezoneConfig
 }
@@ -100,7 +100,7 @@ timezoneConfig() {
     for a in "${areas[@]}"; do menu_args+=("$a" ""); done
 
     local area location
-    area=$(drawDialogBack --no-cancel --default-item "Europe" --title "Set Timezone" --menu "Select your region:" 0 70 9 "${menu_args[@]}")
+    area=$(drawDialogBack --no-cancel --default-item "Europe" --title "Set Timezone" --menu "Select your region:" 20 70 9 "${menu_args[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then userConfig; return; fi
 
@@ -110,7 +110,7 @@ timezoneConfig() {
         local loc_args=() l
         for l in "${display_locations[@]}"; do loc_args+=("$l" ""); done
         
-        location=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your location:" 0 70 12 "${loc_args[@]}")
+        location=$(drawDialogBack --no-cancel --title "Set Timezone" --menu "Select your location:" 20 70 12 "${loc_args[@]}")
         ret=$?
         if [ $ret -eq 3 ]; then userConfig; return; fi
         location="${location// /_}"
@@ -130,7 +130,7 @@ localeConfig() {
     localeList=$(grep -F '.UTF-8' /etc/default/libc-locales | awk '{print $1}' | sed -e 's/^#//' | sort -u)
     for i in $localeList; do tmp+=("$i" ""); done
     
-    localeChoice=$(drawDialogBack --no-cancel --default-item "en_US.UTF-8" --title "Locale Selection" --menu "Please choose your system locale." 0 70 12 "${tmp[@]}")
+    localeChoice=$(drawDialogBack --no-cancel --default-item "en_US.UTF-8" --title "Locale Selection" --menu "Please choose your system locale." 20 70 12 "${tmp[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then timezoneConfig; return; fi
     
@@ -141,7 +141,7 @@ localeConfig() {
 
 # --- 6. REPOSITORY MIRROR ---
 repositoryConfig() {
-    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 0 70
+    drawDialogBack --title "Repository Mirror" --defaultno --yesno "Would you like to set a custom repo mirror?\n\nIf 'No', the default repo will be used." 20 70
     ret=$?
     if [ $ret -eq 3 ]; then localeConfig; return
     elif [ $ret -eq 0 ]; then
@@ -164,7 +164,7 @@ kernelParamsConfig() {
     local KERN_PARAMS_DEFAULT="$BASE_PARAMS mitigations=auto pti=on vsyscall=emulate init_on_alloc=1"
     local KERN_PARAMS_SECURE="$BASE_PARAMS mitigations=auto,nosmt spectre_v2=on spec_store_bypass_disable=on l1tf=full,force pti=on init_on_alloc=1 init_on_free=1 slub_debug=FZP slab_nomerge randomize_kstack_offset=on vsyscall=none random.trust_cpu=off random.trust_bootloader=off"
 
-    preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 0 70 3 \
+    preset=$(drawDialogBack --no-cancel --title "Kernel Hardening" --menu "Select a kernel security profile:" 20 70 3 \
     "default" "- Default (Good performance with baseline security)" \
     "secure" "- Max Security (CPU mitigations, memory hardening, safe for boot hardened)" \
     "custom" "- Custom (Edit the parameters manually - Base options included)")
@@ -178,7 +178,7 @@ kernelParamsConfig() {
     elif [ "$preset" = "custom" ]; then
         while :; do
             KERN_PARAMS=$(drawDialogBack --title "Custom Parameters" --inputbox \
-                "Enter custom kernel parameters (space-separated):\n\n*Base boot options (rw, quiet, loglevel) are already included.*" 0 70 "$KERN_PARAMS_DEFAULT")
+                "Enter custom kernel parameters (space-separated):\n\n*Base boot options (rw, quiet, loglevel) are already included.*" 20 70 "$KERN_PARAMS_DEFAULT")
             ret=$?
             if [ $ret -eq 3 ]; then kernelParamsConfig; return; fi
             
@@ -187,7 +187,7 @@ kernelParamsConfig() {
                 break
             fi
             
-            drawDialog --yesno "You entered:\n\n$KERN_PARAMS\n\nIs this correct?" 0 70
+            drawDialog --yesno "You entered:\n\n$KERN_PARAMS\n\nIs this correct?" 20 70
             if [ $? -eq 0 ]; then break; fi
         done
     fi
@@ -196,7 +196,7 @@ kernelParamsConfig() {
 
 # --- 8. GPU SELECTION ---
 gpuConfig() {
-    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:" 0 70 6 \
+    graphics=$(drawDialogBack --no-cancel --title "GPU Driver Selection" --menu "Select your GPU driver:" 20 70 6 \
     "auto" "- Auto-detect (lspci)" \
     "amd" "- AMD / Radeon" \
     "intel" "- Intel" \
@@ -227,22 +227,22 @@ gpuConfig() {
     if [ -n "$drivers" ]; then
         graphics="$drivers"
         drawDialog --title "GPU Auto-Detection" --msgbox \
-            "Detected display hardware:\n\n$pretty\n\nDriver selection: $drivers" 0 70
+            "Detected display hardware:\n\n$pretty\n\nDriver selection: $drivers" 20 70
     elif [ -n "$vgpu" ]; then
         graphics="none"
         drawDialog --title "GPU Auto-Detection" --msgbox \
-            "Virtual GPU detected: $vgpu\n\n$pretty\n\nThis is expected inside a VM.\nUsing 'none': mesa-dri + the in-kernel\nmodesetting/qxl/virtio-gpu driver is all that is needed." 0 70
+            "Virtual GPU detected: $vgpu\n\n$pretty\n\nThis is expected inside a VM.\nUsing 'none': mesa-dri + the in-kernel\nmodesetting/qxl/virtio-gpu driver is all that is needed." 20 70
     else
         graphics="none"
         drawDialog --title "GPU Auto-Detection" --msgbox \
-            "No known GPU vendor matched.\n\n$pretty\n\nFalling back to 'none' (mesa-dri)." 0 70
+            "No known GPU vendor matched.\n\n$pretty\n\nFalling back to 'none' (mesa-dri)." 20 70
     fi
     securebootConfig
 }
 
 # --- 9. SECURE BOOT ---
 securebootConfig() {
-    drawDialogBack --title "Secure Boot" --yesno "Do you want to generate Secure Boot keys and sign the kernel?\n\nThis installs 'sbctl' and adds a kernel hook to automatically sign kernels on updates." 0 70
+    drawDialogBack --title "Secure Boot" --yesno "Do you want to generate Secure Boot keys and sign the kernel?\n\nThis installs 'sbctl' and adds a kernel hook to automatically sign kernels on updates." 20 70
     ret=$?
     if [ $ret -eq 3 ]; then gpuConfig; return
     elif [ $ret -eq 0 ]; then secureboot="Yes"
@@ -271,7 +271,7 @@ appsConfig() {
     )
 
     selected=$(drawDialogBack --no-cancel --title "Additional Applications" \
-        --checklist "Select optional packages (Space toggles, Enter confirms):" 0 70 15 \
+        --checklist "Select optional packages (Space toggles, Enter confirms):" 20 70 15 \
         "${apps_list[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then securebootConfig; return; fi
@@ -279,9 +279,9 @@ appsConfig() {
     extra_packages=$(tr -d '"' <<<"$selected" | xargs)   # checklist prints: "tag1" "tag2"
 
     if [ -n "$extra_packages" ]; then
-        drawDialog --title "Selected Packages" --msgbox "The following packages will be installed:\n\n$extra_packages" 0 70
+        drawDialog --title "Selected Packages" --msgbox "The following packages will be installed:\n\n$extra_packages" 20 70
     else
-        drawDialog --title "Selected Packages" --msgbox "No additional packages were selected." 0 70
+        drawDialog --title "Selected Packages" --msgbox "No additional packages were selected." 20 70
     fi
 
     # Virt-manager needs underlying dependencies to function
@@ -301,7 +301,7 @@ appsConfig() {
         )
     
         lo_selected=$(drawDialogBack --no-cancel --title "LibreOffice Components" \
-            --checklist "Select LibreOffice apps to install:" 0 70 6 "${lo_list[@]}")
+            --checklist "Select LibreOffice apps to install:" 20 70 6 "${lo_list[@]}")
         ret=$?
         if [ $ret -eq 3 ]; then appsConfig; return; fi
     
@@ -331,7 +331,7 @@ confirm() {
     # height 0 = auto: warning + full summary always visible, never scrolls
     drawDialogBack --defaultno --title "FINAL CONFIRMATION" \
         --yes-label "Install" --no-label "Cancel" \
-        --yesno "WARNING: DESTROY ALL DATA\n\nSelecting 'Install' will PERMANENTLY ERASE the entire contents of:\n\n    >>> $diskInput <<<\n\nOnce you proceed, this cannot be undone.\nReview the settings below, then confirm:\n\n$settings" 0 70
+        --yesno "WARNING: DESTROY ALL DATA\n\nSelecting 'Install' will PERMANENTLY ERASE the entire contents of:\n\n    >>> $diskInput <<<\n\nOnce you proceed, this cannot be undone.\nReview the settings below, then confirm:\n\n$settings" 20 70
     ret=$?
     if [ $ret -eq 3 ]; then appsConfig; return
     elif [ $ret -eq 0 ]; then _install
