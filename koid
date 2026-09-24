@@ -10,7 +10,7 @@
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
-drawDialog --title "Welcome to Koid Linux" --msgbox "Welcome!\n\nThis installer will guide you through setting up a modern, secure, and privacy-focused KDE Plasma desktop.\n\nWe've done the heavy lifting under the hood so you get a fast, reliable, and ready-to-use system out of the box.\n\nPlease ensure you have backed up any important data. The installation will guide you step-by-step, and you will be asked for a final confirmation before any changes are made to your drives.\n\nPress ENTER to begin." 18 60
+drawDialog --title "Welcome to Koid Linux" --msgbox "Welcome!\n\nThis installer will guide you through setting up a modern, secure, and privacy-focused KDE Plasma desktop.\n\nWe've done the heavy lifting under the hood so you get a fast, reliable, and ready-to-use system out of the box.\n\nPlease ensure you have backed up any important data. The installation will guide you step-by-step, and you will be asked for a final confirmation before any changes are made to your drives.\n\nPress ENTER to begin." 18 68
 
 # --- 1. KEYMAP SELECTION ---
 keymapConfig() {
@@ -33,7 +33,7 @@ keymapConfig() {
         keymapArray+=("$k" "")
     done
 
-    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 18 60 12 "${keymapArray[@]}")
+    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 18 68 12 "${keymapArray[@]}")
     
     if [ -n "$keymap_choice" ]; then
         keymap="$keymap_choice"
@@ -51,7 +51,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 18 60 8 "${diskArray[@]}")
+    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 68 8 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then keymapConfig; return
     elif [ -n "$diskInput" ]; then
