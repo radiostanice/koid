@@ -95,8 +95,36 @@ if echo "$extra_packages" | grep -qw "virt-manager"; then
     done
 fi
 
-if echo "$extra_packages" | grep -Eq '(^|[[:space:]])libreoffice(-|$)'; then
+if echo "$extra_packages" | grep -q 'libreoffice'; then
+    # 1. KDE Integration
     install libreoffice-qt6 libreoffice-kde
+
+    # 2. Locale / i18n handling
+    locale_full="${locale#LANG=}"
+    locale_code="${locale_full%%.*}" # e.g. de_DE.UTF-8 -> de_DE
+
+    # Always install English as the universal fallback (skip if they are already English)
+    if [[ "$locale_code" != en* ]]; then
+        install libreoffice-i18n-en-US
+    fi
+
+    # 3. Dynamically find and install the user's selected locale
+    # LibreOffice packages in Void usually use dashes (e.g., libreoffice-i18n-pt-BR)
+    # We check a few variations (Dash, Short, Underscore) and install whichever exists.
+    locale_variations=(
+        "libreoffice-i18n-${locale_code//_/-}" # de-DE
+        "libreoffice-i18n-${locale_code%%_*}"  # de
+        "libreoffice-i18n-${locale_code}"      # de_DE
+    )
+
+    for pkg in "${locale_variations[@]}"; do
+        # -n is dry-run, -y avoids interactive prompts. 
+        # If xbps can resolve it in the remote repo, we install it and break.
+        if xbps-install -R "$repository" -y -n "$pkg" >/dev/null 2>&1; then
+            install "$pkg"
+            break 
+        fi
+    done
 fi
 
 # --- AUDIO SERVER ---
