@@ -33,7 +33,7 @@ keymapConfig() {
         keymapArray+=("$k" "")
     done
 
-    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 0 0 "${keymapArray[@]}")
+    keymap_choice=$(drawDialog --no-cancel --default-item "us" --title "Keyboard Layout" --menu "Select your keyboard keymap:" 0 0  "${keymapArray[@]}")
     
     if [ -n "$keymap_choice" ]; then
         keymap="$keymap_choice"
@@ -51,7 +51,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 0 0 "${diskArray[@]}")
+    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 0 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then keymapConfig; return
     elif [ -n "$diskInput" ]; then
