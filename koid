@@ -10,7 +10,7 @@
 # Catch termination signals and trigger cleanup
 trap 'die "Interrupted by user or terminated (SIGINT/SIGTERM)."' INT TERM QUIT
 
-drawDialog --msgbox "Welcome!\n\nThis installer is customized for a specific, hardened setup:\n- KDE Plasma (Wayland ONLY)\n- Btrfs (Hardened fstab)\n- LUKS2 Encryption only\n- UKI Bootloader only (No GRUB)\n- PipeWire + WirePlumber audio\n- NetworkManager with MAC Randomization\n\nNo changes will be made to the disk until you confirm." 0 0
+drawDialog --title "Welcome" --msgbox "Welcome to the Koid Linux Installer\n\nThis script will guide you through installing a custom, security-focused Void Linux setup.\n\nYour system will be configured with:\n• KDE Plasma (Wayland Session)\n• Btrfs Filesystem (with optimized mount options)\n• Full LUKS2 Disk Encryption\n• Unified Kernel Image (UKI) Bootloader\n• PipeWire Audio\n• NetworkManager (with MAC Randomization)\n\n⚠ WARNING: The entire target drive will be completely wiped and reformatted.\nNo changes will be made to your disk until you reach the final confirmation." 0 0
 
 # --- 1. KEYMAP SELECTION ---
 keymapConfig() {
@@ -44,9 +44,6 @@ keymapConfig() {
     diskConfig
 }
 
-# Start the flow
-keymapConfig
-
 # --- 2. DISK SELECTION ---
 diskConfig() {
     local diskArray=() name size
@@ -54,15 +51,29 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialog --no-cancel --title "Available Disks" --menu "Choose the disk to install Koid Linux to (ALL DATA WILL BE WIPED):" 0 0 0 "${diskArray[@]}")
-    ret=$?
-    if [ $ret -eq 3 ]; then
-        exit 0
-    elif [ -n "$diskInput" ]; then
+    while true; do
+        # Changed to drawDialogBack to allow returning to keymapConfig
+        diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 0 0 0 "${diskArray[@]}")
+        ret=$?
+        
+        # If user presses the "Back" button (return code 3)
+        if [ $ret -eq 3 ]; then
+            keymapConfig
+            return
+        # If user presses ESC or Cancel (return code 1 or 255)
+        elif [ $ret -ne 0 ] || [ -z "$diskInput" ]; then
+            exit 0
+        fi
+        
         diskInput="/dev/$diskInput"
-    else
-        exit 0
-    fi
+        
+        # --- NEW EXPLICIT WIPE CONFIRMATION ---
+        # Using --defaultno requires the user to actively select "Yes" to proceed
+        if drawDialog --defaultno --title "WARNING: DATA LOSS" --yesno "ALL DATA on '$diskInput' WILL BE PERMANENTLY ERASED AND OVERWRITTEN.\n\nAre you absolutely sure you want to select this drive?" 0 0; then
+            break
+        fi
+    done
+
     userConfig
 }
 
@@ -401,4 +412,4 @@ EOF
 }
 
 # Start the flow
-diskConfig
+keymapConfig
