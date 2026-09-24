@@ -51,7 +51,7 @@ diskConfig() {
         [ -n "$name" ] && diskArray+=("$name" "$size")
     done < <(lsblk -d -o NAME,SIZE -n -e7)
 
-    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 18 60 8 "$rows" "${diskArray[@]}")
+    diskInput=$(drawDialogBack --title "Available Disks" --menu "Select the target disk for Koid Linux:" 18 60 8 "${diskArray[@]}")
     ret=$?
     if [ $ret -eq 3 ]; then keymapConfig; return
     elif [ -n "$diskInput" ]; then
