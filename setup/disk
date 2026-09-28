@@ -80,7 +80,7 @@ commandFailure="Writing partition table has failed."
     echo "n"          # New partition
     echo "1"          # Partition 1
     echo ""           # Default first sector
-    echo "+512M"      # 512M for EFI
+    echo "+1G"        # 512M for EFI
     echo "t"          # Change type
     echo "1"          # Partition 1
     echo "1"          # EFI System
