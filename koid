@@ -266,7 +266,7 @@ appsConfig() {
         "libreoffice"  "Office | LibreOffice (component sub-menu)" off
         "flatpak"      "System | Flatpak package management"       off
         "htop"         "System | htop process monitor"             off
-        "blueman"      "System | Bluetooth manager (bluez)"        off
+        "bluedevil"    "System | Bluetooth manager (bluez)"        off
         "cups"         "System | CUPS printing support"            off
         "virt-manager" "System | virt-manager (KVM/QEMU)"          off
     )
