@@ -78,8 +78,8 @@ if echo "$extra_packages" | grep -qw "cups"; then
     enableService cupsd
 fi
 
-if echo "$extra_packages" | grep -qw "blueman"; then
-    install bluez
+if echo "$extra_packages" | grep -qw "bluedevil"; then
+    install bluez bluez-obexd 
     enableService bluetoothd
 fi
 
