@@ -79,7 +79,7 @@ if echo "$extra_packages" | grep -qw "cups"; then
 fi
 
 if echo "$extra_packages" | grep -qw "bluedevil"; then
-    install bluez bluez-obexd 
+    install bluez bluez-obex
     enableService bluetoothd
 fi
 
