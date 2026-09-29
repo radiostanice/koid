@@ -183,7 +183,7 @@ KDE_CONFIG_DIR="/home/$username/.config"
 /usr/bin/install -d -m 0755 -o "$username" -g "$username" "$KDE_CONFIG_DIR" "$KDE_CONFIG_DIR/KDE"
 
 # Now you can safely use install WITHOUT the -D flag (since dirs already exist)
-for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc kactivitymanagerd-pluginsrc; do
+for rc in ksplashrc baloofilerc krunnerrc ksmserverrc kwinrc kactivitymanagerd-pluginsrc kscreenlockerrc; do
     /usr/bin/install -m644 -o "$username" -g "$username" "/tmp/files/kde/$rc" "$KDE_CONFIG_DIR/$rc" || die
 done
 
