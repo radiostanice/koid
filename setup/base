@@ -19,14 +19,12 @@ mkdir -p /mnt/etc/xbps.d
 
 commandFailure="Base system installation has failed."
 
-# Cleaned install list: btrfs-assistant removed; linux-lts and opendoas explicitly added
 XBPS_ARCH=$ARCH install base-system btrfs-progs cryptsetup binutils chrony nano unbound linux-lts opendoas doasedit nftables
 
 # --- UKI & INITRAMFS DEPENDENCIES ---
 commandFailure="UKI/Initramfs package installation has failed."
 install efibootmgr ukify systemd-boot-efistub booster plymouth
 
-# FIX 3: Use explicit '-r /mnt' to ensure this runs on the target, not the live ISO
 xbps-alternatives -r /mnt -s booster || die "Failed to switch to booster"
 
 # --- PLYMOUTH CONFIGURATION ---
@@ -139,7 +137,7 @@ mkdir -p /mnt/etc/sysctl.d /mnt/etc/profile.d /mnt/etc/modprobe.d /mnt/etc/secur
 # 1. Install standard sysctls
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-sysctl.conf" /mnt/etc/sysctl.d/99-sysctl.conf || die
 
-# 2. Install modprobe blacklists (e.g., blocking firewire or thunderbolt)
+# 2. Install modprobe blacklists
 /usr/bin/install -Dm644 "$KOID_FILES_DIR/99-blacklist.conf" /mnt/etc/modprobe.d/99-blacklist.conf || die
 
 # 3. Install Core Dump configs
